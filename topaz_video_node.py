@@ -83,7 +83,13 @@ class TopazVideoAINode:
         frames = image_batch.cpu().numpy()
         frames = (frames * 255).astype(np.uint8)
         
-        frame_dir = os.path.join(self.output_dir, "frames")
+        # 获取 ComfyUI\temp 路径
+        current_script_path = os.path.dirname(os.path.abspath(__file__))
+        comfyui_path = os.path.abspath(os.path.join(current_script_path, "..", "..", ".."))
+        comfyui_temp_dir = os.path.join(comfyui_path, "temp")
+        
+        # 创建帧保存目录
+        frame_dir = os.path.join(comfyui_temp_dir, "frames")
         os.makedirs(frame_dir, exist_ok=True)
         
         try:
@@ -91,8 +97,10 @@ class TopazVideoAINode:
                 img = Image.fromarray(frame)
                 img.save(os.path.join(frame_dir, f"frame_{i:05d}.png"))
             
+            # 启用硬件加速 (hwaccel auto)
             cmd = [
                 "ffmpeg", "-y",
+                "-hwaccel", "auto",  # 启用硬件加速
                 "-i", os.path.join(frame_dir, "frame_%05d.png"),
                 "-c:v", "mpeg4",
                 "-q:v", "2",
@@ -110,9 +118,10 @@ class TopazVideoAINode:
     
     def _apply_upscale(self, input_path, output_path, scale_factor):
         """Apply upscale filter using Topaz Video AI"""
+        # 启用硬件加速 (hwaccel auto)
         cmd = [
             "ffmpeg", "-y",
-            "-hwaccel", "auto",
+            "-hwaccel", "auto",  # 启用硬件加速
             "-i", input_path,
             "-vf", f"tvai_up=scale={scale_factor}",
             "-c:v", "mpeg4",
@@ -126,8 +135,10 @@ class TopazVideoAINode:
         
     def _apply_interpolation(self, input_path, output_path, target_fps):
         """Apply frame interpolation filter using Topaz Video AI"""
+        # 启用硬件加速 (hwaccel auto)
         cmd = [
             "ffmpeg", "-y",
+            "-hwaccel", "auto",  # 启用硬件加速
             "-i", input_path,
             "-vf", f"tvai_fi=fps={target_fps}",
             "-c:v", "mpeg4",
@@ -141,12 +152,20 @@ class TopazVideoAINode:
     
     def _video_to_batch(self, video_path):
         """Convert video file back to tensor image batch"""
-        frame_dir = os.path.join(self.output_dir, "output_frames")
+        # 获取 ComfyUI\temp 路径
+        current_script_path = os.path.dirname(os.path.abspath(__file__))
+        comfyui_path = os.path.abspath(os.path.join(current_script_path, "..", "..", ".."))
+        comfyui_temp_dir = os.path.join(comfyui_path, "temp")
+        
+        # 创建帧保存目录
+        frame_dir = os.path.join(comfyui_temp_dir, "output_frames")
         os.makedirs(frame_dir, exist_ok=True)
         
         try:
+            # 启用硬件加速 (hwaccel auto)
             cmd = [
                 "ffmpeg", "-y",
+                "-hwaccel", "auto",  # 启用硬件加速
                 "-i", video_path,
                 os.path.join(frame_dir, "frame_%05d.png")
             ]
@@ -157,12 +176,16 @@ class TopazVideoAINode:
             
             frames = []
             frame_files = sorted(os.listdir(frame_dir))
+            logger.debug(f"Extracted frame files: {frame_files}")  # 打印提取的帧文件列表
             
             for frame_file in frame_files:
                 img = Image.open(os.path.join(frame_dir, frame_file))
                 frame = np.array(img)
                 frames.append(frame)
-                
+            
+            if not frames:
+                raise ValueError("No frames were extracted from the video.")
+            
             frames_tensor = torch.from_numpy(np.stack(frames)).float() / 255.0
             
             return frames_tensor
