@@ -18,6 +18,11 @@ cd "C:\Program Files\Topaz Labs LLC\Topaz Video AI"
 The path may vary when you have custom installation path
 Then close the shell terminal, now you can use this node normally
 
+Usage:
+Simply connect this nodes between video output and video save
+![image](https://github.com/user-attachments/assets/18e10017-ebb3-4e9f-a4ae-45e33c641ff0)
+
 Notification:
 Use 2 or 4 for upscale factor, others may cause error now
 Model selection is not ready yet, now only works with default
+This node is designed for short AI generated videos. I didn't test it with long video, because comfyui transfer video as image batch, the node will encode and decode which cost longer time than TopazVideoAI GUI. 
