@@ -42,17 +42,17 @@ This node is designed for short AI generated videos. I didn't test it with long 
 将此项目克隆到 custom_nodes 文件夹
 
 ```
-git clone &lt;https://github.com/sh570655308/ComfyUI-TopazVideoAI.git
+git clone https://github.com/sh570655308/ComfyUI-TopazVideoAI.git
 ```
 
 使用：
 首先要设置环境变量
 
-打开topaz video ai的ui，登录账号，ctrl+shift+T打开命令窗口，会自动设置模型目录到环境变量。
+打开topaz video ai的应用程序，登录账号，快捷键ctrl+shift+T打开命令窗口，会自动设置模型目录到环境变量。
 
-如果自动设置模型目录失败，则需要手动设置，在用户环境配置中添加*TVAI_MODEL_DATA_DIR 和TVAI_MODEL_DIR，*数值为模型对应的目录
+如果自动设置模型目录失败，则需要手动设置，在用户环境配置中添加TVAI_MODEL_DATA_DIR 和TVAI_MODEL_DIR，数值为模型对应的目录
 
-然后在path中添加topaz的安装目录，这一步是设置ffmpeg，如果之前有设置过其他路径请删除
+然后在path中添加topaz的安装目录，这一步是设置ffmpeg，如果之前有设置过其他路径的ffmpeg请删除
 
 设置完成后关闭gui，打开shell终端输入：
 
