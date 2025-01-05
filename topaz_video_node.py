@@ -32,7 +32,7 @@ class TopazVideoAINode:
                 "images": ("IMAGE",),
                 "enable_upscale": ("BOOLEAN", {"default": False}),
                 "upscale_factor": ("FLOAT", {"default": 2.0, "min": 1.0, "max": 4.0, "step": 0.5}),
-                "upscale_model": (["auto", "aaa-9", "ahq-12", "alq-13", "alqs-2", "amq-13", "amqs-2", "ghq-5", "iris-3", "nyx-3", "prob-4", "thm-2"], {"default": "auto"}),
+                "upscale_model": (["auto", "aaa-9", "ahq-12", "alq-13", "alqs-2", "amq-13", "amqs-2", "ghq-5", "iris-3", "nyx-3", "prob-4", "thm-2", "rhea-1", "rxl-1", "thm-2"], {"default": "auto"}),
                 "enable_interpolation": ("BOOLEAN", {"default": False}),
                 "target_fps": ("INT", {"default": 60, "min": 1, "max": 240}),
                 "interpolation_model": (["auto", "apo-8", "apf-1", "chr-2", "chf-3", "chr-2"], {"default": "auto"}),
@@ -105,6 +105,7 @@ class TopazVideoAINode:
                 "-i", os.path.join(frame_dir, "frame_%05d.png"),
                 "-c:v", "mpeg4",
                 "-q:v", "2",
+                "-r", "30",
                 output_path
             ]
             
