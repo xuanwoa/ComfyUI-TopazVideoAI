@@ -7,7 +7,14 @@ from PIL import Image
 import tempfile
 import logging
 import shutil
+from concurrent.futures import ThreadPoolExecutor
 
+try:
+    import cupy as cp
+    CUPY_AVAILABLE = True
+except ImportError:
+    CUPY_AVAILABLE = False
+    
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('TopazVideoAI')
 
@@ -18,6 +25,8 @@ class TopazVideoAINode:
         os.makedirs(self.output_dir, exist_ok=True)
         self.temp_files = []
         logger.debug(f"Initialized temp directory at: {self.output_dir}")
+        if not CUPY_AVAILABLE:
+            logger.warning("CuPy not available. Some GPU operations will be disabled.")
 
     def __del__(self):
         for file in self.temp_files:
@@ -36,6 +45,7 @@ class TopazVideoAINode:
                 "enable_interpolation": ("BOOLEAN", {"default": False}),
                 "target_fps": ("INT", {"default": 60, "min": 1, "max": 240}),
                 "interpolation_model": (["auto", "apo-8", "apf-1", "chr-2", "chf-3", "chr-2"], {"default": "auto"}),
+                "use_gpu": ("BOOLEAN", {"default": True}),
             }
         }
 
@@ -44,7 +54,7 @@ class TopazVideoAINode:
     CATEGORY = "video"
 
     def process_video(self, images, enable_upscale, upscale_factor, upscale_model, 
-                     enable_interpolation, target_fps, interpolation_model):
+                     enable_interpolation, target_fps, interpolation_model, use_gpu):
         operation_id = str(uuid.uuid4())
         base_video = os.path.join(self.output_dir, f"{operation_id}_input.mp4")
         upscaled_video = os.path.join(self.output_dir, f"{operation_id}_upscaled.mp4")
@@ -54,7 +64,7 @@ class TopazVideoAINode:
         
         try:
             logger.info("Converting image batch to video...")
-            self._batch_to_video(images, base_video)
+            self._batch_to_video(images, base_video, use_gpu)
             
             current_input = base_video
             current_output = upscaled_video if enable_upscale else final_video
@@ -71,7 +81,7 @@ class TopazVideoAINode:
                 current_input = current_output
 
             logger.info("Converting final video back to image batch...")
-            output_frames = self._video_to_batch(current_input)
+            output_frames = self._video_to_batch(current_input, use_gpu)
             
             return (output_frames,)
             
@@ -79,21 +89,45 @@ class TopazVideoAINode:
             logger.error(f"An error occurred: {e}")
             raise
 
-    def _batch_to_video(self, image_batch, output_path):
-        frames = image_batch.cpu().numpy()
-        frames = (frames * 255).astype(np.uint8)
+    def _save_batch(self, frames_batch, frame_dir, start_idx):
+        """Helper function to save a batch of frames"""
+        for i, frame in enumerate(frames_batch):
+            frame_path = os.path.join(frame_dir, f"frame_{start_idx + i:05d}.png")
+            img = Image.fromarray(frame)
+            img.save(frame_path)
+        return [os.path.join(frame_dir, f"frame_{start_idx + i:05d}.png") for i in range(len(frames_batch))]
+
+    def _batch_to_video(self, image_batch, output_path, use_gpu):
+        # Only use GPU for initial processing if GPU acceleration is enabled
+        device = torch.device("cuda" if use_gpu and torch.cuda.is_available() else "cpu")
+        
+        if use_gpu and torch.cuda.is_available():
+            frames = image_batch.to(device)
+            frames = (frames * 255).byte()
+            frames = frames.cpu().numpy()
+        else:
+            frames = image_batch.cpu().numpy()
+            frames = (frames * 255).astype(np.uint8)
         
         frame_dir = os.path.join(self.output_dir, f"input_frames_{uuid.uuid4()}")
         os.makedirs(frame_dir, exist_ok=True)
         logger.debug(f"Created frame directory: {frame_dir}")
         
         try:
+            # Process frames in parallel using ThreadPoolExecutor
+            batch_size = 32
             frame_paths = []
-            for i, frame in enumerate(frames):
-                frame_path = os.path.join(frame_dir, f"frame_{i:05d}.png")
-                img = Image.fromarray(frame)
-                img.save(frame_path)
-                frame_paths.append(frame_path)
+            
+            with ThreadPoolExecutor() as executor:
+                futures = []
+                for i in range(0, len(frames), batch_size):
+                    batch = frames[i:i + batch_size]
+                    futures.append(
+                        executor.submit(self._save_batch, batch, frame_dir, i)
+                    )
+                
+                for future in futures:
+                    frame_paths.extend(future.result())
             
             logger.debug(f"Saved {len(frame_paths)} frames")
             
@@ -103,7 +137,7 @@ class TopazVideoAINode:
             cmd = [
                 "ffmpeg", "-y",
                 "-i", os.path.join(frame_dir, "frame_%05d.png"),
-                "-c:v", "mpeg4",
+                "-c:v", "hevc_nvenc" if use_gpu else "mpeg4",
                 "-q:v", "2",
                 "-r", "30",
                 output_path
@@ -136,7 +170,7 @@ class TopazVideoAINode:
             "-hwaccel", "auto",
             "-i", input_path,
             "-vf", vf_param,
-            "-c:v", "mpeg4",
+            "-c:v", "mpeg4",  # Always use mpeg4 for upscale
             "-q:v", "2",
             output_path
         ]
@@ -164,7 +198,7 @@ class TopazVideoAINode:
             "ffmpeg", "-y",
             "-i", input_path,
             "-vf", vf_param,
-            "-c:v", "mpeg4",
+            "-c:v", "mpeg4",  # Always use mpeg4 for interpolation
             "-q:v", "2",
             output_path
         ]
@@ -180,7 +214,7 @@ class TopazVideoAINode:
         
         logger.debug(f"Interpolation completed: {output_path}")
 
-    def _video_to_batch(self, video_path):
+    def _video_to_batch(self, video_path, use_gpu):
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Input video not found: {video_path}")
         
@@ -209,11 +243,25 @@ class TopazVideoAINode:
                 raise ValueError(f"No frames extracted from video: {video_path}")
             
             frames = []
-            for frame_file in frame_files:
-                frame_path = os.path.join(frame_dir, frame_file)
-                img = Image.open(frame_path)
-                frame = np.array(img)
-                frames.append(frame)
+            
+            # Use CuPy for GPU acceleration if available and enabled
+            if use_gpu and CUPY_AVAILABLE:
+                logger.debug("Using CuPy for frame processing")
+                with cp.cuda.Device(0):
+                    for frame_file in frame_files:
+                        frame_path = os.path.join(frame_dir, frame_file)
+                        # Load image into CPU numpy array first
+                        img_np = np.array(Image.open(frame_path))
+                        # Transfer to GPU
+                        frame_gpu = cp.asarray(img_np)
+                        frames.append(cp.asnumpy(frame_gpu))
+            else:
+                logger.debug("Using CPU for frame processing")
+                for frame_file in frame_files:
+                    frame_path = os.path.join(frame_dir, frame_file)
+                    img = Image.open(frame_path)
+                    frame = np.array(img)
+                    frames.append(frame)
             
             frames_tensor = torch.from_numpy(np.stack(frames)).float() / 255.0
             logger.debug(f"Created tensor with shape: {frames_tensor.shape}")
