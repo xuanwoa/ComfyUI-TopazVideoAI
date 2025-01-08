@@ -34,6 +34,10 @@ Use 2 or 4 for upscale factor, others may cause error now
 ~~Model selection is not ready yet, now only works with default~~
 This node is designed for short AI generated videos. I didn't test it with long video, because comfyui transfer video as image batch, the node will encode and decode which cost longer time than TopazVideoAI GUI. 
 
+Common errors:
+No such filter: 'tvai_up'
+Make sure the ffmpeg path is correct and unique - you must use the ffmpeg that comes with TopazVideoAI.
+
 ### 中文
 要求：
 已安装的 TopazVideoAI，要登录账户
@@ -66,3 +70,7 @@ git clone https://github.com/sh570655308/ComfyUI-TopazVideoAI.git
 放大倍数请使用2或4，其他数值目前可能导致错误
 ~~模型选择功能尚未就绪，目前仅支持默认设置~~
 此节点专为AI生成的短视频设计。由于ComfyUI以图像批次方式传输视频，节点需要进行编码和解码，因此相比TopazVideoAI图形界面处理时间更长，故未对长视频进行测试。
+
+常见错误：
+No such filter: 'tvai_up’
+确保ffmpeg的path路径正确，必须用TopazVideoAI自带的ffmpeg。
