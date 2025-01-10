@@ -36,7 +36,7 @@ This node is designed for short AI generated videos. I didn't test it with long 
 
 Common errors:
 No such filter: 'tvai_up'
-Make sure the ffmpeg path is correct and unique - you must use the ffmpeg that comes with TopazVideoAI.
+Make sure the ffmpeg path is correct and unique - you must use the ffmpeg that comes with TopazVideoAI. Remember to remove ffmpeg from other paths and from the ComfyUI environment.
 
 ### 中文
 要求：
@@ -73,4 +73,4 @@ git clone https://github.com/sh570655308/ComfyUI-TopazVideoAI.git
 
 常见错误：
 No such filter: 'tvai_up’
-确保ffmpeg的path路径正确，必须用TopazVideoAI自带的ffmpeg。
+确保ffmpeg的path路径正确，必须用TopazVideoAI自带的ffmpeg。记得删除其他路径的ffmpeg以及comfyui环境中的ffmpeg。
