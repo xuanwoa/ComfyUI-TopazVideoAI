@@ -41,7 +41,8 @@ class TopazVideoAINode:
                 "images": ("IMAGE",),
                 "enable_upscale": ("BOOLEAN", {"default": False}),
                 "upscale_factor": ("FLOAT", {"default": 2.0, "min": 1.0, "max": 4.0, "step": 0.5}),
-                "upscale_model": (["auto", "aaa-9", "ahq-12", "alq-13", "alqs-2", "amq-13", "amqs-2", "ghq-5", "iris-3", "nyx-3", "prob-4", "thm-2", "rhea-1", "rxl-1", "thm-2"], {"default": "auto"}),
+                "upscale_model": (["auto", "aaa-9", "ahq-12", "alq-13", "alqs-2", "amq-13", "amqs-2", "ghq-5", "iris-2", "iris-3", "nyx-3", "prob-4", "thm-2", "rhea-1", "rxl-1"], {"default": "auto"}),
+                "compression": ("FLOAT", {"default": 0.0, "min": -1.0, "max": 1.0, "step": 0.1}),
                 "enable_interpolation": ("BOOLEAN", {"default": False}),
                 "target_fps": ("INT", {"default": 60, "min": 1, "max": 240}),
                 "interpolation_model": (["auto", "apo-8", "apf-1", "chr-2", "chf-3", "chr-2"], {"default": "auto"}),
@@ -54,7 +55,7 @@ class TopazVideoAINode:
     CATEGORY = "video"
 
     def process_video(self, images, enable_upscale, upscale_factor, upscale_model, 
-                     enable_interpolation, target_fps, interpolation_model, use_gpu):
+                     enable_interpolation, target_fps, interpolation_model, use_gpu, compression):
         operation_id = str(uuid.uuid4())
         base_video = os.path.join(self.output_dir, f"{operation_id}_input.mp4")
         upscaled_video = os.path.join(self.output_dir, f"{operation_id}_upscaled.mp4")
@@ -71,7 +72,7 @@ class TopazVideoAINode:
 
             if enable_upscale:
                 logger.info(f"Applying upscale filter with factor {upscale_factor}...")
-                self._apply_upscale(current_input, current_output, upscale_factor, upscale_model)
+                self._apply_upscale(current_input, current_output, upscale_factor, upscale_model, compression)
                 current_input = current_output
                 current_output = final_video
 
@@ -157,13 +158,16 @@ class TopazVideoAINode:
         finally:
             shutil.rmtree(frame_dir, ignore_errors=True)
 
-    def _apply_upscale(self, input_path, output_path, scale_factor, model):
+    def _apply_upscale(self, input_path, output_path, scale_factor, model, compression):
         if not os.path.exists(input_path):
             raise FileNotFoundError(f"Input video not found: {input_path}")
             
         vf_param = f"tvai_up=scale={scale_factor}"
+        if model == "thm-2":
+            scale_factor = 1.0
+            
         if model != "auto":
-            vf_param = f"tvai_up=model={model}:scale={scale_factor}"
+            vf_param = f"tvai_up=model={model}:scale={scale_factor}:estimate=8:compression={compression}"
         
         cmd = [
             "ffmpeg", "-y",
