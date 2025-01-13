@@ -42,6 +42,10 @@ class TopazUpscaleParamsNode:
     CATEGORY = "video"
 
     def get_params(self, upscale_factor=2.0, upscale_model="auto", compression=1.0, blend=0.0, previous_upscale=None):
+        if upscale_model == "thm-2" and upscale_factor != 1.0:
+            upscale_factor = 1.0
+            logger.warning("thm-2 forces upscale_factor=1.0")
+            
         current_params = {
             "upscale_factor": upscale_factor,
             "upscale_model": upscale_model,
@@ -240,6 +244,9 @@ class TopazVideoAINode:
 
     def process_video(self, images, enable_upscale, upscale_factor, upscale_model, compression, blend,
                      enable_interpolation, target_fps, interpolation_model, use_gpu, previous_upscale=None):
+        if upscale_model == "thm-2" and upscale_factor != 1.0:
+            upscale_factor = 1.0
+            logger.warning("thm-2 forces upscale_factor=1.0")
         operation_id = str(uuid.uuid4())
         input_video = os.path.join(self.output_dir, f"{operation_id}_input.mp4")
         intermediate_video = os.path.join(self.output_dir, f"{operation_id}_intermediate.mp4")
@@ -253,7 +260,6 @@ class TopazVideoAINode:
             current_input = input_video
             current_output = intermediate_video
 
-            # 首先处理upscale
             if enable_upscale and (previous_upscale or upscale_model != "auto"):
                 all_upscale_params = []
                 if previous_upscale:
@@ -266,7 +272,6 @@ class TopazVideoAINode:
                         "blend": blend
                     })
                 
-                # 构建upscale滤镜链
                 upscale_filters = []
                 for params in all_upscale_params:
                     if params["upscale_model"] == "auto":
@@ -302,14 +307,11 @@ class TopazVideoAINode:
                     current_input = current_output
                     current_output = output_video
             
-            # 然后处理interpolation
             if enable_interpolation:
                 logger.info(f"Applying interpolation with target fps {target_fps}")
-                # 确保目标帧率是有效的正整数
                 if target_fps <= 0:
                     raise ValueError("Target FPS must be greater than 0")
                 
-                # 构建interpolation命令
                 interpolation_filter = (f"tvai_fi=model={interpolation_model}:fps={target_fps}"
                                      if interpolation_model != "auto"
                                      else f"tvai_fi=fps={target_fps}")
@@ -330,7 +332,6 @@ class TopazVideoAINode:
                 if result.returncode != 0:
                     raise RuntimeError(f"FFmpeg interpolation error: {result.stderr}")
             else:
-                # 如果不需要interpolation，且当前输入不是最终输出，则复制到最终输出
                 if current_input != output_video:
                     shutil.copy2(current_input, current_output)
             
