@@ -18,6 +18,42 @@ except ImportError:
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('TopazVideoAI')
 
+class TopazUpscaleParamsNode:
+    def __init__(self):
+        pass
+        
+    @classmethod
+    def INPUT_TYPES(cls):
+        upscale_models = ["auto", "aaa-9", "ahq-12", "alq-13", "alqs-2", "amq-13", "amqs-2", "ghq-5", "iris-2", "iris-3", "nyx-3", "prob-4", "thm-2", "rhea-1", "rxl-1"]
+        return {
+            "required": {
+                "upscale_factor": ("FLOAT", {"default": 2.0, "min": 1.0, "max": 4.0, "step": 0.5}),
+                "upscale_model": (upscale_models, {"default": "auto"}),
+                "compression": ("FLOAT", {"default": 1.0, "min": -1.0, "max": 1.0, "step": 0.1}),
+                "blend": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.1}),
+            },
+            "optional": {
+                "previous_upscale": ("UPSCALE_PARAMS",),
+            }
+        }
+
+    RETURN_TYPES = ("UPSCALE_PARAMS",)
+    FUNCTION = "get_params"
+    CATEGORY = "video"
+
+    def get_params(self, upscale_factor=2.0, upscale_model="auto", compression=1.0, blend=0.0, previous_upscale=None):
+        current_params = {
+            "upscale_factor": upscale_factor,
+            "upscale_model": upscale_model,
+            "compression": compression,
+            "blend": blend
+        }
+        
+        if previous_upscale is None:
+            return ([current_params],)
+        else:
+            return (previous_upscale + [current_params],)
+        
 class TopazVideoAINode:
     def __init__(self):
         self.base_temp_dir = tempfile.gettempdir()
@@ -28,58 +64,75 @@ class TopazVideoAINode:
         if not CUPY_AVAILABLE:
             logger.warning("CuPy not available. Some GPU operations will be disabled.")
 
-    def __del__(self):
-        for file in self.temp_files:
-            if os.path.exists(file):
-                os.remove(file)
-                logger.debug(f"Cleaned up temporary file: {file}")
-
     @classmethod
     def INPUT_TYPES(cls):
-        return {
+        upscale_models = ["auto", "aaa-9", "ahq-12", "alq-13", "alqs-2", "amq-13", "amqs-2", "ghq-5", "iris-2", "iris-3", "nyx-3", "prob-4", "thm-2", "rhea-1", "rxl-1"]
+        base_inputs = {
             "required": {
                 "images": ("IMAGE",),
                 "enable_upscale": ("BOOLEAN", {"default": False}),
                 "upscale_factor": ("FLOAT", {"default": 2.0, "min": 1.0, "max": 4.0, "step": 0.5}),
-                "upscale_model": (["auto", "aaa-9", "ahq-12", "alq-13", "alqs-2", "amq-13", "amqs-2", "ghq-5", "iris-2", "iris-3", "nyx-3", "prob-4", "thm-2", "rhea-1", "rxl-1"], {"default": "auto"}),
-                "compression": ("FLOAT", {"default": 0.0, "min": -1.0, "max": 1.0, "step": 0.1}),
+                "upscale_model": (upscale_models, {"default": "auto"}),
+                "compression": ("FLOAT", {"default": 1.0, "min": -1.0, "max": 1.0, "step": 0.1}),
+                "blend": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.1}),
                 "enable_interpolation": ("BOOLEAN", {"default": False}),
                 "target_fps": ("INT", {"default": 60, "min": 1, "max": 240}),
                 "interpolation_model": (["auto", "apo-8", "apf-1", "chr-2", "chf-3", "chr-2"], {"default": "auto"}),
                 "use_gpu": ("BOOLEAN", {"default": True}),
+            },
+            "optional": {
+                "previous_upscale": ("UPSCALE_PARAMS",),
             }
         }
+        return base_inputs
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "process_video"
     CATEGORY = "video"
 
-    def process_video(self, images, enable_upscale, upscale_factor, upscale_model, 
-                     enable_interpolation, target_fps, interpolation_model, use_gpu, compression):
+    def process_video(self, images, enable_upscale, upscale_factor, upscale_model, compression, blend,
+                     enable_interpolation, target_fps, interpolation_model, use_gpu, previous_upscale=None):
         operation_id = str(uuid.uuid4())
         base_video = os.path.join(self.output_dir, f"{operation_id}_input.mp4")
-        upscaled_video = os.path.join(self.output_dir, f"{operation_id}_upscaled.mp4")
-        final_video = os.path.join(self.output_dir, f"{operation_id}_final.mp4")
-        
-        self.temp_files.extend([base_video, upscaled_video, final_video])
+        self.temp_files.append(base_video)
         
         try:
             logger.info("Converting image batch to video...")
             self._batch_to_video(images, base_video, use_gpu)
             
             current_input = base_video
-            current_output = upscaled_video if enable_upscale else final_video
-
+            
             if enable_upscale:
-                logger.info(f"Applying upscale filter with factor {upscale_factor}...")
-                self._apply_upscale(current_input, current_output, upscale_factor, upscale_model, compression)
+                # Process previous upscale parameters if they exist
+                if previous_upscale is not None:
+                    for i, params in enumerate(previous_upscale):
+                        current_output = os.path.join(self.output_dir, f"{operation_id}_prev_upscaled_{i}.mp4")
+                        self.temp_files.append(current_output)
+                        
+                        logger.info(f"Applying previous upscale filter #{i+1} with params: {params}")
+                        self._apply_upscale(current_input, current_output, 
+                                          params["upscale_factor"],
+                                          params["upscale_model"],
+                                          params["compression"],
+                                          params["blend"])
+                        current_input = current_output
+                
+                # Apply current node's upscale
+                current_output = os.path.join(self.output_dir, f"{operation_id}_upscaled_final.mp4")
+                self.temp_files.append(current_output)
+                
+                logger.info(f"Applying final upscale with factor {upscale_factor}...")
+                self._apply_upscale(current_input, current_output, upscale_factor, upscale_model, 
+                                  compression, blend)
                 current_input = current_output
-                current_output = final_video
+
+            final_video = os.path.join(self.output_dir, f"{operation_id}_final.mp4")
+            self.temp_files.append(final_video)
 
             if enable_interpolation:
                 logger.info(f"Applying frame interpolation to {target_fps} fps...")
-                self._apply_interpolation(current_input, current_output, target_fps, interpolation_model)
-                current_input = current_output
+                self._apply_interpolation(current_input, final_video, target_fps, interpolation_model)
+                current_input = final_video
 
             logger.info("Converting final video back to image batch...")
             output_frames = self._video_to_batch(current_input, use_gpu)
@@ -158,7 +211,7 @@ class TopazVideoAINode:
         finally:
             shutil.rmtree(frame_dir, ignore_errors=True)
 
-    def _apply_upscale(self, input_path, output_path, scale_factor, model, compression):
+    def _apply_upscale(self, input_path, output_path, scale_factor, model, compression, blend):
         if not os.path.exists(input_path):
             raise FileNotFoundError(f"Input video not found: {input_path}")
             
@@ -167,7 +220,7 @@ class TopazVideoAINode:
             scale_factor = 1.0
             
         if model != "auto":
-            vf_param = f"tvai_up=model={model}:scale={scale_factor}:estimate=8:compression={compression}"
+            vf_param = f"tvai_up=model={model}:scale={scale_factor}:estimate=8:compression={compression}:blend={blend}"
         
         cmd = [
             "ffmpeg", "-y",
@@ -276,9 +329,11 @@ class TopazVideoAINode:
             shutil.rmtree(frame_dir, ignore_errors=True)
 
 NODE_CLASS_MAPPINGS = {
-    "TopazVideoAI": TopazVideoAINode
+    "TopazVideoAI": TopazVideoAINode,
+    "TopazUpscaleParams": TopazUpscaleParamsNode
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "TopazVideoAI": "Topaz Video AI (Upscale & Frame Interpolation)"
+    "TopazVideoAI": "Topaz Video AI (Upscale & Frame Interpolation)",
+    "TopazUpscaleParams": "Topaz Upscale Parameters"
 }
