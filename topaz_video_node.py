@@ -53,7 +53,7 @@ class TopazUpscaleParamsNode:
             return ([current_params],)
         else:
             return (previous_upscale + [current_params],)
-        
+
 class TopazVideoAINode:
     def __init__(self):
         self.base_temp_dir = tempfile.gettempdir()
@@ -67,7 +67,7 @@ class TopazVideoAINode:
     @classmethod
     def INPUT_TYPES(cls):
         upscale_models = ["auto", "aaa-9", "ahq-12", "alq-13", "alqs-2", "amq-13", "amqs-2", "ghq-5", "iris-2", "iris-3", "nyx-3", "prob-4", "thm-2", "rhea-1", "rxl-1"]
-        base_inputs = {
+        return {
             "required": {
                 "images": ("IMAGE",),
                 "enable_upscale": ("BOOLEAN", {"default": False}),
@@ -84,75 +84,22 @@ class TopazVideoAINode:
                 "previous_upscale": ("UPSCALE_PARAMS",),
             }
         }
-        return base_inputs
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "process_video"
     CATEGORY = "video"
 
-    def process_video(self, images, enable_upscale, upscale_factor, upscale_model, compression, blend,
-                     enable_interpolation, target_fps, interpolation_model, use_gpu, previous_upscale=None):
-        operation_id = str(uuid.uuid4())
-        base_video = os.path.join(self.output_dir, f"{operation_id}_input.mp4")
-        self.temp_files.append(base_video)
-        
-        try:
-            logger.info("Converting image batch to video...")
-            self._batch_to_video(images, base_video, use_gpu)
-            
-            current_input = base_video
-            
-            if enable_upscale:
-                # Process previous upscale parameters if they exist
-                if previous_upscale is not None:
-                    for i, params in enumerate(previous_upscale):
-                        current_output = os.path.join(self.output_dir, f"{operation_id}_prev_upscaled_{i}.mp4")
-                        self.temp_files.append(current_output)
-                        
-                        logger.info(f"Applying previous upscale filter #{i+1} with params: {params}")
-                        self._apply_upscale(current_input, current_output, 
-                                          params["upscale_factor"],
-                                          params["upscale_model"],
-                                          params["compression"],
-                                          params["blend"])
-                        current_input = current_output
-                
-                # Apply current node's upscale
-                current_output = os.path.join(self.output_dir, f"{operation_id}_upscaled_final.mp4")
-                self.temp_files.append(current_output)
-                
-                logger.info(f"Applying final upscale with factor {upscale_factor}...")
-                self._apply_upscale(current_input, current_output, upscale_factor, upscale_model, 
-                                  compression, blend)
-                current_input = current_output
-
-            final_video = os.path.join(self.output_dir, f"{operation_id}_final.mp4")
-            self.temp_files.append(final_video)
-
-            if enable_interpolation:
-                logger.info(f"Applying frame interpolation to {target_fps} fps...")
-                self._apply_interpolation(current_input, final_video, target_fps, interpolation_model)
-                current_input = final_video
-
-            logger.info("Converting final video back to image batch...")
-            output_frames = self._video_to_batch(current_input, use_gpu)
-            
-            return (output_frames,)
-            
-        except Exception as e:
-            logger.error(f"An error occurred: {e}")
-            raise
-
     def _save_batch(self, frames_batch, frame_dir, start_idx):
         """Helper function to save a batch of frames"""
+        frame_paths = []
         for i, frame in enumerate(frames_batch):
             frame_path = os.path.join(frame_dir, f"frame_{start_idx + i:05d}.png")
             img = Image.fromarray(frame)
             img.save(frame_path)
-        return [os.path.join(frame_dir, f"frame_{start_idx + i:05d}.png") for i in range(len(frames_batch))]
+            frame_paths.append(frame_path)
+        return frame_paths
 
     def _batch_to_video(self, image_batch, output_path, use_gpu):
-        # Only use GPU for initial processing if GPU acceleration is enabled
         device = torch.device("cuda" if use_gpu and torch.cuda.is_available() else "cpu")
         
         if use_gpu and torch.cuda.is_available():
@@ -168,7 +115,6 @@ class TopazVideoAINode:
         logger.debug(f"Created frame directory: {frame_dir}")
         
         try:
-            # Process frames in parallel using ThreadPoolExecutor
             batch_size = 32
             frame_paths = []
             
@@ -211,65 +157,32 @@ class TopazVideoAINode:
         finally:
             shutil.rmtree(frame_dir, ignore_errors=True)
 
-    def _apply_upscale(self, input_path, output_path, scale_factor, model, compression, blend):
-        if not os.path.exists(input_path):
-            raise FileNotFoundError(f"Input video not found: {input_path}")
-            
-        vf_param = f"tvai_up=scale={scale_factor}"
-        if model == "thm-2":
-            scale_factor = 1.0
-            
-        if model != "auto":
-            vf_param = f"tvai_up=model={model}:scale={scale_factor}:estimate=8:compression={compression}:blend={blend}"
+    def _build_filter_chain(self, enable_upscale, upscale_params, enable_interpolation, 
+                          target_fps, interpolation_model):
+        """构建FFmpeg滤镜链"""
+        filters = []
         
-        cmd = [
-            "ffmpeg", "-y",
-            "-hwaccel", "auto",
-            "-i", input_path,
-            "-vf", vf_param,
-            "-c:v", "mpeg4",  # Always use mpeg4 for upscale
-            "-q:v", "2",
-            output_path
-        ]
-        
-        logger.debug(f"Running upscale command: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            raise RuntimeError(f"Upscale error: {result.stderr}")
-        
-        if not os.path.exists(output_path):
-            raise FileNotFoundError(f"Upscaled video not created: {output_path}")
-        
-        logger.debug(f"Upscale completed: {output_path}")
+        if enable_upscale:
+            if upscale_params:
+                for params in upscale_params:
+                    if params["upscale_model"] == "auto":
+                        filters.append(f"tvai_up=scale={params['upscale_factor']}")
+                    else:
+                        filters.append(
+                            f"tvai_up=model={params['upscale_model']}"
+                            f":scale={params['upscale_factor']}"
+                            f":estimate=8"
+                            f":compression={params['compression']}"
+                            f":blend={params['blend']}"
+                        )
 
-    def _apply_interpolation(self, input_path, output_path, target_fps, model):
-        if not os.path.exists(input_path):
-            raise FileNotFoundError(f"Input video not found: {input_path}")
-            
-        vf_param = f"tvai_fi=fps={target_fps}"
-        if model != "auto":
-            vf_param = f"tvai_fi=model={model}:fps={target_fps}"
-        
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", input_path,
-            "-vf", vf_param,
-            "-c:v", "mpeg4",  # Always use mpeg4 for interpolation
-            "-q:v", "2",
-            output_path
-        ]
-        
-        logger.debug(f"Running interpolation command: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            raise RuntimeError(f"Interpolation error: {result.stderr}")
-            
-        if not os.path.exists(output_path):
-            raise FileNotFoundError(f"Interpolated video not created: {output_path}")
-        
-        logger.debug(f"Interpolation completed: {output_path}")
+        if enable_interpolation:
+            if interpolation_model == "auto":
+                filters.append(f"tvai_fi=fps={target_fps}")
+            else:
+                filters.append(f"tvai_fi=model={interpolation_model}:fps={target_fps}")
+                
+        return ','.join(filters) if filters else None
 
     def _video_to_batch(self, video_path, use_gpu):
         if not os.path.exists(video_path):
@@ -301,15 +214,12 @@ class TopazVideoAINode:
             
             frames = []
             
-            # Use CuPy for GPU acceleration if available and enabled
             if use_gpu and CUPY_AVAILABLE:
                 logger.debug("Using CuPy for frame processing")
                 with cp.cuda.Device(0):
                     for frame_file in frame_files:
                         frame_path = os.path.join(frame_dir, frame_file)
-                        # Load image into CPU numpy array first
                         img_np = np.array(Image.open(frame_path))
-                        # Transfer to GPU
                         frame_gpu = cp.asarray(img_np)
                         frames.append(cp.asnumpy(frame_gpu))
             else:
@@ -327,6 +237,68 @@ class TopazVideoAINode:
             
         finally:
             shutil.rmtree(frame_dir, ignore_errors=True)
+
+    def process_video(self, images, enable_upscale, upscale_factor, upscale_model, compression, blend,
+                     enable_interpolation, target_fps, interpolation_model, use_gpu, previous_upscale=None):
+        operation_id = str(uuid.uuid4())
+        input_video = os.path.join(self.output_dir, f"{operation_id}_input.mp4")
+        output_video = os.path.join(self.output_dir, f"{operation_id}_output.mp4")
+        self.temp_files.extend([input_video, output_video])
+        
+        try:
+            logger.info("Converting image batch to video...")
+            self._batch_to_video(images, input_video, use_gpu)
+            
+            # 构建完整的upscale参数列表
+            all_upscale_params = []
+            if previous_upscale:
+                all_upscale_params.extend(previous_upscale)
+            if enable_upscale:
+                all_upscale_params.append({
+                    "upscale_factor": upscale_factor,
+                    "upscale_model": upscale_model,
+                    "compression": compression,
+                    "blend": blend
+                })
+                
+            # 获取滤镜链
+            filter_chain = self._build_filter_chain(
+                enable_upscale,
+                all_upscale_params,
+                enable_interpolation,
+                target_fps,
+                interpolation_model
+            )
+            
+            if filter_chain:
+                logger.info(f"Applying filter chain: {filter_chain}")
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-hwaccel", "auto",
+                    "-i", input_video,
+                    "-vf", filter_chain,
+                    "-c:v", "mpeg4",
+                    "-q:v", "2",
+                    output_video
+                ]
+                
+                logger.debug(f"Running FFmpeg command: {' '.join(cmd)}")
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                if result.returncode != 0:
+                    raise RuntimeError(f"FFmpeg filter chain error: {result.stderr}")
+            else:
+                # 如果没有需要应用的滤镜，直接复制输入文件
+                shutil.copy2(input_video, output_video)
+            
+            logger.info("Converting final video back to image batch...")
+            output_frames = self._video_to_batch(output_video, use_gpu)
+            
+            return (output_frames,)
+            
+        except Exception as e:
+            logger.error(f"An error occurred: {e}")
+            raise
 
 NODE_CLASS_MAPPINGS = {
     "TopazVideoAI": TopazVideoAINode,
