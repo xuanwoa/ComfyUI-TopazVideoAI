@@ -242,57 +242,100 @@ class TopazVideoAINode:
                      enable_interpolation, target_fps, interpolation_model, use_gpu, previous_upscale=None):
         operation_id = str(uuid.uuid4())
         input_video = os.path.join(self.output_dir, f"{operation_id}_input.mp4")
+        intermediate_video = os.path.join(self.output_dir, f"{operation_id}_intermediate.mp4")
         output_video = os.path.join(self.output_dir, f"{operation_id}_output.mp4")
-        self.temp_files.extend([input_video, output_video])
+        self.temp_files.extend([input_video, intermediate_video, output_video])
         
         try:
             logger.info("Converting image batch to video...")
             self._batch_to_video(images, input_video, use_gpu)
             
-            # 构建完整的upscale参数列表
-            all_upscale_params = []
-            if previous_upscale:
-                all_upscale_params.extend(previous_upscale)
-            if enable_upscale:
-                all_upscale_params.append({
-                    "upscale_factor": upscale_factor,
-                    "upscale_model": upscale_model,
-                    "compression": compression,
-                    "blend": blend
-                })
+            current_input = input_video
+            current_output = intermediate_video
+
+            # 首先处理upscale
+            if enable_upscale and (previous_upscale or upscale_model != "auto"):
+                all_upscale_params = []
+                if previous_upscale:
+                    all_upscale_params.extend(previous_upscale)
+                if enable_upscale:
+                    all_upscale_params.append({
+                        "upscale_factor": upscale_factor,
+                        "upscale_model": upscale_model,
+                        "compression": compression,
+                        "blend": blend
+                    })
                 
-            # 获取滤镜链
-            filter_chain = self._build_filter_chain(
-                enable_upscale,
-                all_upscale_params,
-                enable_interpolation,
-                target_fps,
-                interpolation_model
-            )
+                # 构建upscale滤镜链
+                upscale_filters = []
+                for params in all_upscale_params:
+                    if params["upscale_model"] == "auto":
+                        upscale_filters.append(f"tvai_up=scale={params['upscale_factor']}")
+                    else:
+                        upscale_filters.append(
+                            f"tvai_up=model={params['upscale_model']}"
+                            f":scale={params['upscale_factor']}"
+                            f":estimate=8"
+                            f":compression={params['compression']}"
+                            f":blend={params['blend']}"
+                        )
+                
+                if upscale_filters:
+                    filter_chain = ','.join(upscale_filters)
+                    logger.info(f"Applying upscale filter chain: {filter_chain}")
+                    cmd = [
+                        "ffmpeg", "-y",
+                        "-hwaccel", "auto",
+                        "-i", current_input,
+                        "-vf", filter_chain,
+                        "-c:v", "mpeg4",
+                        "-q:v", "2",
+                        current_output
+                    ]
+                    
+                    logger.debug(f"Running FFmpeg upscale command: {' '.join(cmd)}")
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    
+                    if result.returncode != 0:
+                        raise RuntimeError(f"FFmpeg upscale error: {result.stderr}")
+                    
+                    current_input = current_output
+                    current_output = output_video
             
-            if filter_chain:
-                logger.info(f"Applying filter chain: {filter_chain}")
+            # 然后处理interpolation
+            if enable_interpolation:
+                logger.info(f"Applying interpolation with target fps {target_fps}")
+                # 确保目标帧率是有效的正整数
+                if target_fps <= 0:
+                    raise ValueError("Target FPS must be greater than 0")
+                
+                # 构建interpolation命令
+                interpolation_filter = (f"tvai_fi=model={interpolation_model}:fps={target_fps}"
+                                     if interpolation_model != "auto"
+                                     else f"tvai_fi=fps={target_fps}")
+                
                 cmd = [
                     "ffmpeg", "-y",
                     "-hwaccel", "auto",
-                    "-i", input_video,
-                    "-vf", filter_chain,
+                    "-i", current_input,
+                    "-vf", interpolation_filter,
                     "-c:v", "mpeg4",
                     "-q:v", "2",
-                    output_video
+                    current_output
                 ]
                 
-                logger.debug(f"Running FFmpeg command: {' '.join(cmd)}")
+                logger.debug(f"Running FFmpeg interpolation command: {' '.join(cmd)}")
                 result = subprocess.run(cmd, capture_output=True, text=True)
                 
                 if result.returncode != 0:
-                    raise RuntimeError(f"FFmpeg filter chain error: {result.stderr}")
+                    raise RuntimeError(f"FFmpeg interpolation error: {result.stderr}")
             else:
-                # 如果没有需要应用的滤镜，直接复制输入文件
-                shutil.copy2(input_video, output_video)
+                # 如果不需要interpolation，且当前输入不是最终输出，则复制到最终输出
+                if current_input != output_video:
+                    shutil.copy2(current_input, current_output)
             
             logger.info("Converting final video back to image batch...")
-            output_frames = self._video_to_batch(output_video, use_gpu)
+            output_frames = self._video_to_batch(current_output, use_gpu)
             
             return (output_frames,)
             
