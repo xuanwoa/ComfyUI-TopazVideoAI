@@ -1,0 +1,436 @@
+{
+  "last_node_id": 23,
+  "last_link_id": 36,
+  "nodes": [
+    {
+      "id": 11,
+      "type": "VHS_LoadVideoPath",
+      "pos": [
+        1040,
+        1130
+      ],
+      "size": [
+        260,
+        238
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            13,
+            34
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "frame_count",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": null
+        },
+        {
+          "name": "video_info",
+          "type": "VHS_VIDEOINFO",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_LoadVideoPath"
+      },
+      "widgets_values": {
+        "video": "D:\\Github\\ComfyUI_windows_portable\\ComfyUI\\output\\HunyuanVideo_00026.mp4",
+        "force_rate": 0,
+        "force_size": "Disabled",
+        "custom_width": 512,
+        "custom_height": 512,
+        "frame_load_cap": 0,
+        "skip_first_frames": 0,
+        "select_every_nth": 1,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "force_rate": 0,
+            "frame_load_cap": 0,
+            "skip_first_frames": 0,
+            "select_every_nth": 1,
+            "filename": "D:\\Github\\ComfyUI_windows_portable\\ComfyUI\\output\\HunyuanVideo_00026.mp4",
+            "type": "path",
+            "format": "video/mp4"
+          },
+          "muted": false
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "VHS_VideoCombine",
+      "pos": [
+        1800,
+        1130
+      ],
+      "size": [
+        250,
+        716
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 34
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "AnimateDiff",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 19,
+        "save_metadata": true,
+        "trim_to_audio": false,
+        "pingpong": false,
+        "save_output": false,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "filename": "AnimateDiff_00016.mp4",
+            "subfolder": "",
+            "type": "temp",
+            "format": "video/h264-mp4",
+            "frame_rate": 24,
+            "workflow": "AnimateDiff_00016.png",
+            "fullpath": "D:\\Github\\ComfyUI_windows_portable_121\\ComfyUI\\temp\\AnimateDiff_00016.mp4"
+          },
+          "muted": false
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "TopazVideoAI",
+      "pos": [
+        1350,
+        1130
+      ],
+      "size": [
+        400,
+        270
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 13
+        },
+        {
+          "name": "previous_upscale",
+          "type": "UPSCALE_PARAMS",
+          "link": 17,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            35
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TopazVideoAI"
+      },
+      "widgets_values": [
+        true,
+        2,
+        "aaa-9",
+        1,
+        0,
+        true,
+        60,
+        "auto",
+        true
+      ]
+    },
+    {
+      "id": 15,
+      "type": "TopazUpscaleParams",
+      "pos": [
+        1040,
+        1430
+      ],
+      "size": [
+        262,
+        130
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "previous_upscale",
+          "type": "UPSCALE_PARAMS",
+          "link": 36,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "UPSCALE_PARAMS",
+          "type": "UPSCALE_PARAMS",
+          "links": [
+            17
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TopazUpscaleParams"
+      },
+      "widgets_values": [
+        2,
+        "iris-2",
+        1,
+        0
+      ]
+    },
+    {
+      "id": 22,
+      "type": "VHS_VideoCombine",
+      "pos": [
+        2100,
+        1130
+      ],
+      "size": [
+        250,
+        716
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 35
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": {
+        "frame_rate": 48,
+        "loop_count": 0,
+        "filename_prefix": "AnimateDiff",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 19,
+        "save_metadata": true,
+        "trim_to_audio": false,
+        "pingpong": false,
+        "save_output": false,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "filename": "AnimateDiff_00017.mp4",
+            "subfolder": "",
+            "type": "temp",
+            "format": "video/h264-mp4",
+            "frame_rate": 48,
+            "workflow": "AnimateDiff_00017.png",
+            "fullpath": "D:\\Github\\ComfyUI_windows_portable_121\\ComfyUI\\temp\\AnimateDiff_00017.mp4"
+          },
+          "muted": false
+        }
+      }
+    },
+    {
+      "id": 23,
+      "type": "TopazUpscaleParams",
+      "pos": [
+        1040,
+        1630
+      ],
+      "size": [
+        262,
+        130
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "previous_upscale",
+          "type": "UPSCALE_PARAMS",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "UPSCALE_PARAMS",
+          "type": "UPSCALE_PARAMS",
+          "links": [
+            36
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TopazUpscaleParams"
+      },
+      "widgets_values": [
+        1,
+        "thm-2",
+        0,
+        0.5
+      ]
+    }
+  ],
+  "links": [
+    [
+      13,
+      11,
+      0,
+      14,
+      0,
+      "IMAGE"
+    ],
+    [
+      17,
+      15,
+      0,
+      14,
+      1,
+      "UPSCALE_PARAMS"
+    ],
+    [
+      34,
+      11,
+      0,
+      13,
+      0,
+      "IMAGE"
+    ],
+    [
+      35,
+      14,
+      0,
+      22,
+      0,
+      "IMAGE"
+    ],
+    [
+      36,
+      23,
+      0,
+      15,
+      0,
+      "UPSCALE_PARAMS"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 1.1167815779425119,
+      "offset": [
+        -407.60358703264365,
+        -1203.0134230500162
+      ]
+    },
+    "node_versions": {
+      "ComfyUI-VideoHelperSuite": "cad87a17a3ff5e03c26cf55e4dc90397b5642503",
+      "ComfyUI-TopazVideoAI": "41346d5ff1fa195173bb8bee837af850522a538c"
+    },
+    "ue_links": [],
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0
+  },
+  "version": 0.4
+}
