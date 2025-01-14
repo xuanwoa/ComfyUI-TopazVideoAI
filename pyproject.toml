@@ -1,0 +1,14 @@
+[project]
+name = "topazvideoai"
+description = "Custom nodes use topazvideoai in comfyui."
+version = "1.0.0"
+license = {file = "LICENSE"}
+
+[project.urls]
+Repository = "https://github.com/sh570655308/ComfyUI-TopazVideoAI"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = "sh570655308"
+DisplayName = "ComfyUI-TopazVideoAI"
+Icon = ""
