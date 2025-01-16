@@ -30,7 +30,8 @@ The path may vary when you have custom installation path
 Then close the shell terminal, now you can use this node normally
 
 Usage:
-Simply connect this nodes between video output and video save
+Simply connect this nodes between video output and video save.
+Workflows contained in examples folder.
 
 Notification:
 The models have scaling limitations; for example, thm-2 is fixed at a 1x scale. As not all models have undergone comprehensive testing and standardization for various scaling factors, it is advisable to use either 2x or 4x. If you encounter errors when attempting a 4x scale, please default to using a 2x scale.
@@ -71,7 +72,9 @@ ffmpeg路径在节点中指定，默认值是C:\Program Files\Topaz Labs LLC\Top
 
 ```.\login```
 
-之后就可以正常使用了
+之后就可以正常使用了，接在视频输入前即可。
+
+examples文件夹中包含工作流。
 
 注意事项：
 模型有倍数限制，例如thm-2只能1倍，由于未对全部模型的倍数进行测试和规范化，所以放大倍数请使用2或者4，当4报错时请使用2。
