@@ -83,6 +83,7 @@ class TopazVideoAINode:
                 "target_fps": ("INT", {"default": 60, "min": 1, "max": 240}),
                 "interpolation_model": (["auto", "apo-8", "apf-1", "chr-2", "chf-3", "chr-2"], {"default": "auto"}),
                 "use_gpu": ("BOOLEAN", {"default": True}),
+                "ffmpeg_path": ("STRING", {"default": r"C:\Program Files\Topaz Labs LLC\Topaz Video AI"}),
             },
             "optional": {
                 "previous_upscale": ("UPSCALE_PARAMS",),
@@ -93,7 +94,32 @@ class TopazVideoAINode:
     FUNCTION = "process_video"
     CATEGORY = "video"
 
-    def _save_batch(self, frames_batch, frame_dir, start_idx):
+    def _get_system_ffmpeg(self):
+        """Try to find system FFmpeg installation"""
+        try:
+            result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True)
+            if result.returncode == 0:
+                return 'ffmpeg'
+        except:
+            pass
+        return None
+
+    def _get_ffmpeg_path(self, ffmpeg_base_path, for_topaz=False):
+        """Get appropriate FFmpeg path based on context"""
+        if for_topaz:
+            # For Topaz operations, always use Topaz FFmpeg
+            return os.path.join(ffmpeg_base_path, 'ffmpeg.exe')
+        
+        # For regular operations, try system FFmpeg first
+        system_ffmpeg = self._get_system_ffmpeg()
+        if system_ffmpeg:
+            return system_ffmpeg
+            
+        # Fallback to Topaz FFmpeg if system FFmpeg is not available
+        logger.warning("System FFmpeg not found, falling back to Topaz FFmpeg")
+        return os.path.join(ffmpeg_base_path, 'ffmpeg.exe')
+
+    def _save_batch(self, frames_batch, frame_dir, start_idx, ffmpeg_path):
         """Helper function to save a batch of frames"""
         frame_paths = []
         for i, frame in enumerate(frames_batch):
@@ -103,7 +129,7 @@ class TopazVideoAINode:
             frame_paths.append(frame_path)
         return frame_paths
 
-    def _batch_to_video(self, image_batch, output_path, use_gpu):
+    def _batch_to_video(self, image_batch, output_path, use_gpu, ffmpeg_path):
         device = torch.device("cuda" if use_gpu and torch.cuda.is_available() else "cpu")
         
         if use_gpu and torch.cuda.is_available():
@@ -127,7 +153,7 @@ class TopazVideoAINode:
                 for i in range(0, len(frames), batch_size):
                     batch = frames[i:i + batch_size]
                     futures.append(
-                        executor.submit(self._save_batch, batch, frame_dir, i)
+                        executor.submit(self._save_batch, batch, frame_dir, i, ffmpeg_path)
                     )
                 
                 for future in futures:
@@ -138,8 +164,9 @@ class TopazVideoAINode:
             if not frame_paths:
                 raise ValueError("No frames were saved")
             
+            ffmpeg_exe = self._get_ffmpeg_path(ffmpeg_path, False)
             cmd = [
-                "ffmpeg", "-y",
+                ffmpeg_exe, "-y",
                 "-i", os.path.join(frame_dir, "frame_%05d.png"),
                 "-c:v", "hevc_nvenc" if use_gpu else "mpeg4",
                 "-q:v", "2",
@@ -161,34 +188,7 @@ class TopazVideoAINode:
         finally:
             shutil.rmtree(frame_dir, ignore_errors=True)
 
-    def _build_filter_chain(self, enable_upscale, upscale_params, enable_interpolation, 
-                          target_fps, interpolation_model):
-        """构建FFmpeg滤镜链"""
-        filters = []
-        
-        if enable_upscale:
-            if upscale_params:
-                for params in upscale_params:
-                    if params["upscale_model"] == "auto":
-                        filters.append(f"tvai_up=scale={params['upscale_factor']}")
-                    else:
-                        filters.append(
-                            f"tvai_up=model={params['upscale_model']}"
-                            f":scale={params['upscale_factor']}"
-                            f":estimate=8"
-                            f":compression={params['compression']}"
-                            f":blend={params['blend']}"
-                        )
-
-        if enable_interpolation:
-            if interpolation_model == "auto":
-                filters.append(f"tvai_fi=fps={target_fps}")
-            else:
-                filters.append(f"tvai_fi=model={interpolation_model}:fps={target_fps}")
-                
-        return ','.join(filters) if filters else None
-
-    def _video_to_batch(self, video_path, use_gpu):
+    def _video_to_batch(self, video_path, use_gpu, ffmpeg_path):
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Input video not found: {video_path}")
         
@@ -197,8 +197,9 @@ class TopazVideoAINode:
         logger.debug(f"Created output frame directory: {frame_dir}")
         
         try:
+            ffmpeg_exe = self._get_ffmpeg_path(ffmpeg_path, False)
             cmd = [
-                "ffmpeg", "-y",
+                ffmpeg_exe, "-y",
                 "-i", video_path,
                 "-vsync", "0",
                 os.path.join(frame_dir, "frame_%05d.png")
@@ -243,7 +244,7 @@ class TopazVideoAINode:
             shutil.rmtree(frame_dir, ignore_errors=True)
 
     def process_video(self, images, enable_upscale, upscale_factor, upscale_model, compression, blend,
-                     enable_interpolation, target_fps, interpolation_model, use_gpu, previous_upscale=None):
+                     enable_interpolation, target_fps, interpolation_model, use_gpu, ffmpeg_path, previous_upscale=None):
         if upscale_model == "thm-2" and upscale_factor != 1.0:
             upscale_factor = 1.0
             logger.warning("thm-2 forces upscale_factor=1.0")
@@ -255,7 +256,7 @@ class TopazVideoAINode:
         
         try:
             logger.info("Converting image batch to video...")
-            self._batch_to_video(images, input_video, use_gpu)
+            self._batch_to_video(images, input_video, use_gpu, ffmpeg_path)
             
             current_input = input_video
             current_output = intermediate_video
@@ -288,8 +289,9 @@ class TopazVideoAINode:
                 if upscale_filters:
                     filter_chain = ','.join(upscale_filters)
                     logger.info(f"Applying upscale filter chain: {filter_chain}")
+                    topaz_ffmpeg = self._get_ffmpeg_path(ffmpeg_path, True)
                     cmd = [
-                        "ffmpeg", "-y",
+                        topaz_ffmpeg, "-y",
                         "-hwaccel", "auto",
                         "-i", current_input,
                         "-vf", filter_chain,
@@ -316,8 +318,9 @@ class TopazVideoAINode:
                                      if interpolation_model != "auto"
                                      else f"tvai_fi=fps={target_fps}")
                 
+                topaz_ffmpeg = self._get_ffmpeg_path(ffmpeg_path, True)
                 cmd = [
-                    "ffmpeg", "-y",
+                    topaz_ffmpeg, "-y",
                     "-hwaccel", "auto",
                     "-i", current_input,
                     "-vf", interpolation_filter,
@@ -336,14 +339,14 @@ class TopazVideoAINode:
                     shutil.copy2(current_input, current_output)
             
             logger.info("Converting final video back to image batch...")
-            output_frames = self._video_to_batch(current_output, use_gpu)
+            output_frames = self._video_to_batch(current_output, use_gpu, ffmpeg_path)
             
             return (output_frames,)
             
         except Exception as e:
             logger.error(f"An error occurred: {e}")
             raise
-
+        
 NODE_CLASS_MAPPINGS = {
     "TopazVideoAI": TopazVideoAINode,
     "TopazUpscaleParams": TopazUpscaleParamsNode
