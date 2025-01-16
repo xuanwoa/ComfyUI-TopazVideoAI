@@ -8,7 +8,8 @@ Requirements:
 Licensed installation of TopazVideoAI
 
 Installation:
-git clone this project to custom_nodes folder
+method 1: search 'TopazVideoAI' in manager and install it.
+method 2: git clone this project to custom_nodes folder
 ```
 git clone https://github.com/sh570655308/ComfyUI-TopazVideoAI.git
 ```
@@ -47,7 +48,8 @@ Make sure the ffmpeg path is correct ~~and unique - you must use the ffmpeg that
 已安装的 TopazVideoAI，要登录账户
 
 安装：
-将此项目克隆到 custom_nodes 文件夹
+方法1.通过comfyui manager搜索topazvideoai后安装
+方法2.将此项目克隆到 custom_nodes 文件夹
 
 ```
 git clone https://github.com/sh570655308/ComfyUI-TopazVideoAI.git
