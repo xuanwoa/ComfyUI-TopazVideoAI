@@ -1,7 +1,7 @@
 [project]
 name = "topazvideoai"
 description = "Custom nodes use topazvideoai in comfyui."
-version = "1.0.0"
+version = "1.0.1"
 license = {file = "LICENSE"}
 
 [project.urls]
