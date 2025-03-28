@@ -80,7 +80,8 @@ class TopazVideoAINode:
                 "compression": ("FLOAT", {"default": 1.0, "min": -1.0, "max": 1.0, "step": 0.1}),
                 "blend": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.1}),
                 "enable_interpolation": ("BOOLEAN", {"default": False}),
-                "target_fps": ("INT", {"default": 60, "min": 1, "max": 240}),
+                "input_fps": ("INT", {"default": 24, "min": 1, "max": 240}),
+                "interpolation_multiplier": ("FLOAT", {"default": 2.0, "min": 1.0, "max": 8.0, "step": 0.5}),
                 "interpolation_model": (["apo-8", "apf-1", "chr-2", "chf-3", "chr-2"], {"default": "apo-8"}),
                 "use_gpu": ("BOOLEAN", {"default": True}),
                 "topaz_ffmpeg_path": ("STRING", {"default": r"C:\Program Files\Topaz Labs LLC\Topaz Video AI"}),
@@ -163,7 +164,7 @@ class TopazVideoAINode:
             frame_paths.append(frame_path)
         return frame_paths
 
-    def _batch_to_video(self, image_batch, output_path, use_gpu, topaz_ffmpeg_path, force_topaz_ffmpeg):
+    def _batch_to_video(self, image_batch, output_path, use_gpu, topaz_ffmpeg_path, force_topaz_ffmpeg, input_fps=24):
         device = torch.device("cuda" if use_gpu and torch.cuda.is_available() else "cpu")
         
         if use_gpu and torch.cuda.is_available():
@@ -201,12 +202,32 @@ class TopazVideoAINode:
             ffmpeg_exe = self._get_topaz_ffmpeg_path(topaz_ffmpeg_path, False, force_topaz_ffmpeg)
             cmd = [
                 ffmpeg_exe, "-y",
+                "-hide_banner",
+                "-nostdin",
+                "-strict", "2",
+                "-hwaccel", "auto",
                 "-i", os.path.join(frame_dir, "frame_%05d.png"),
-                "-c:v", "hevc_nvenc" if use_gpu else "mpeg4",
-                "-q:v", "2",
-                "-r", "30",
-                output_path
             ]
+            
+            if use_gpu:
+                cmd.extend([
+                    "-c:v", "hevc_nvenc",
+                    "-profile", "main",
+                    "-preset", "medium",
+                    "-global_quality", "19",
+                    "-pix_fmt", "yuv420p",
+                    "-movflags", "frag_keyframe+empty_moov",
+                ])
+            else:
+                cmd.extend([
+                    "-c:v", "mpeg4",
+                    "-q:v", "2",
+                ])
+                
+            cmd.extend([
+                "-r", str(input_fps),
+                output_path
+            ])
             
             logger.debug(f"Running FFmpeg command: {' '.join(cmd)}")
             result = subprocess.run(cmd, capture_output=True, text=True)
@@ -278,7 +299,7 @@ class TopazVideoAINode:
             shutil.rmtree(frame_dir, ignore_errors=True)
 
     def process_video(self, images, enable_upscale, upscale_factor, upscale_model, compression, blend,
-                     enable_interpolation, target_fps, interpolation_model, use_gpu, topaz_ffmpeg_path, 
+                     enable_interpolation, input_fps, interpolation_multiplier, interpolation_model, use_gpu, topaz_ffmpeg_path, 
                      force_topaz_ffmpeg, previous_upscale=None):
         if upscale_model == "thm-2" and upscale_factor != 1.0:
             upscale_factor = 1.0
@@ -291,8 +312,8 @@ class TopazVideoAINode:
         self.temp_files.extend([input_video, intermediate_video, output_video])
         
         try:
-            logger.info("Converting image batch to video...")
-            self._batch_to_video(images, input_video, use_gpu, topaz_ffmpeg_path, force_topaz_ffmpeg)
+            logger.info(f"Converting image batch to video with input fps {input_fps}...")
+            self._batch_to_video(images, input_video, use_gpu, topaz_ffmpeg_path, force_topaz_ffmpeg, input_fps)
             
             current_input = input_video
             current_output = intermediate_video
@@ -326,13 +347,33 @@ class TopazVideoAINode:
                 ffmpeg_exe = self._get_topaz_ffmpeg_path(topaz_ffmpeg_path, True, force_topaz_ffmpeg)
                 cmd = [
                     ffmpeg_exe, "-y",
+                    "-hide_banner",
+                    "-nostdin",
+                    "-strict", "2",
                     "-hwaccel", "auto",
                     "-i", current_input,
                     "-vf", filter_chain,
-                    "-c:v", "mpeg4",
-                    "-q:v", "2",
-                    current_output
                 ]
+                
+                if use_gpu:
+                    cmd.extend([
+                        "-c:v", "hevc_nvenc",
+                        "-profile", "main",
+                        "-preset", "medium",
+                        "-global_quality", "19",
+                        "-pix_fmt", "yuv420p",
+                        "-movflags", "frag_keyframe+empty_moov",
+                    ])
+                else:
+                    cmd.extend([
+                        "-c:v", "mpeg4",
+                        "-q:v", "2",
+                    ])
+                    
+                cmd.extend([
+                    "-r", str(input_fps),
+                    current_output
+                ])
                 
                 logger.debug(f"Running FFmpeg upscale command: {' '.join(cmd)}")
                 result = subprocess.run(cmd, capture_output=True, text=True)
@@ -344,7 +385,8 @@ class TopazVideoAINode:
                 current_output = output_video
             
             if enable_interpolation:
-                logger.info(f"Applying interpolation with target fps {target_fps}")
+                target_fps = int(input_fps * interpolation_multiplier)
+                logger.info(f"Applying interpolation with input fps {input_fps} and multiplier {interpolation_multiplier} (target fps: {target_fps})")
                 if target_fps <= 0:
                     raise ValueError("Target FPS must be greater than 0")
                 
@@ -353,13 +395,32 @@ class TopazVideoAINode:
                 ffmpeg_exe = self._get_topaz_ffmpeg_path(topaz_ffmpeg_path, True, force_topaz_ffmpeg)
                 cmd = [
                     ffmpeg_exe, "-y",
+                    "-hide_banner",
+                    "-nostdin",
+                    "-strict", "2",
                     "-hwaccel", "auto",
                     "-i", current_input,
                     "-vf", interpolation_filter,
-                    "-c:v", "mpeg4",
-                    "-q:v", "2",
-                    current_output
                 ]
+                
+                if use_gpu:
+                    cmd.extend([
+                        "-c:v", "hevc_nvenc",
+                        "-profile", "main",
+                        "-preset", "medium",
+                        "-global_quality", "19",
+                        "-pix_fmt", "yuv420p",
+                        "-movflags", "frag_keyframe+empty_moov",
+                    ])
+                else:
+                    cmd.extend([
+                        "-c:v", "mpeg4",
+                        "-q:v", "2",
+                    ])
+                    
+                cmd.extend([
+                    current_output
+                ])
                 
                 logger.debug(f"Running FFmpeg interpolation command: {' '.join(cmd)}")
                 result = subprocess.run(cmd, capture_output=True, text=True)
