@@ -8,6 +8,8 @@ import tempfile
 import logging
 import shutil
 from concurrent.futures import ThreadPoolExecutor
+import re
+import folder_paths
 
 try:
     import cupy as cp
@@ -86,6 +88,8 @@ class TopazVideoAINode:
                 "use_gpu": ("BOOLEAN", {"default": True}),
                 "topaz_ffmpeg_path": ("STRING", {"default": r"C:\Program Files\Topaz Labs LLC\Topaz Video AI"}),
                 "force_topaz_ffmpeg": ("BOOLEAN", {"default": True}),
+                "save_video": ("BOOLEAN", {"default": False}),
+                "filename_prefix": ("STRING", {"default": "TopazVideo"}),
             },
             "optional": {
                 "previous_upscale": ("UPSCALE_PARAMS",),
@@ -93,6 +97,8 @@ class TopazVideoAINode:
         }
 
     RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("IMAGE",)
+    OUTPUT_NODE = True
     FUNCTION = "process_video"
     CATEGORY = "video"
 
@@ -300,7 +306,7 @@ class TopazVideoAINode:
 
     def process_video(self, images, enable_upscale, upscale_factor, upscale_model, compression, blend,
                      enable_interpolation, input_fps, interpolation_multiplier, interpolation_model, use_gpu, topaz_ffmpeg_path, 
-                     force_topaz_ffmpeg, previous_upscale=None):
+                     force_topaz_ffmpeg, save_video=False, filename_prefix="TopazVideo", previous_upscale=None):
         if upscale_model == "thm-2" and upscale_factor != 1.0:
             upscale_factor = 1.0
             logger.warning("thm-2 forces upscale_factor=1.0")
@@ -431,10 +437,52 @@ class TopazVideoAINode:
                 if current_input != output_video:
                     shutil.copy2(current_input, current_output)
             
-            logger.info("Converting final video back to image batch...")
-            output_frames = self._video_to_batch(current_output, use_gpu, topaz_ffmpeg_path, force_topaz_ffmpeg)
-            
-            return (output_frames,)
+            # Save video if requested
+            if save_video:
+                output_dir = folder_paths.get_output_directory()
+                full_output_folder, filename, _, subfolder, _ = folder_paths.get_save_image_path(filename_prefix, output_dir)
+                
+                # Find the next available counter
+                max_counter = 0
+                matcher = re.compile(f"{re.escape(filename)}_(\\d+)\\D*\\..+", re.IGNORECASE)
+                for existing_file in os.listdir(full_output_folder):
+                    match = matcher.fullmatch(existing_file)
+                    if match:
+                        file_counter = int(match.group(1))
+                        if file_counter > max_counter:
+                            max_counter = file_counter
+                
+                counter = max_counter + 1
+                output_file = f"{filename}_{counter:05}.mp4"
+                output_path = os.path.join(full_output_folder, output_file)
+                
+                # Copy the final video to the output directory
+                shutil.copy2(current_output, output_path)
+                logger.info(f"Saved video to: {output_path}")
+                
+                # Return UI information for the saved video
+                previews = [{
+                    "filename": output_file,
+                    "subfolder": subfolder,
+                    "type": "output",
+                    "format": "video/mp4",
+                    "frame_rate": input_fps,
+                }]
+                
+                # Check if there are any connected output nodes
+                if not hasattr(self, '_connected_outputs') or not self._connected_outputs:
+                    # If no connected outputs, just return the UI info
+                    return {"ui": {"gifs": previews}, "result": (images,)}
+                else:
+                    # If there are connected outputs, convert back to image sequence
+                    logger.info("Converting final video back to image batch...")
+                    output_frames = self._video_to_batch(current_output, use_gpu, topaz_ffmpeg_path, force_topaz_ffmpeg)
+                    return {"ui": {"gifs": previews}, "result": (output_frames,)}
+            else:
+                # If save_video is False, we must convert back to image sequence
+                logger.info("Converting final video back to image batch...")
+                output_frames = self._video_to_batch(current_output, use_gpu, topaz_ffmpeg_path, force_topaz_ffmpeg)
+                return (output_frames,)
             
         except Exception as e:
             logger.error(f"An error occurred: {e}")
