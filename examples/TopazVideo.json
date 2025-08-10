@@ -1,0 +1,604 @@
+{
+  "id": "f19de141-c3e7-4310-818b-4fea8966000e",
+  "revision": 0,
+  "last_node_id": 53,
+  "last_link_id": 89,
+  "nodes": [
+    {
+      "id": 23,
+      "type": "VHS_LoadVideo",
+      "pos": [
+        288.6705017089844,
+        1178.909423828125
+      ],
+      "size": [
+        534.0185546875,
+        613.1354370117188
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "meta_batch",
+          "shape": 7,
+          "type": "VHS_BatchManager",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            81
+          ]
+        },
+        {
+          "name": "frame_count",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": null
+        },
+        {
+          "name": "video_info",
+          "type": "VHS_VIDEOINFO",
+          "links": [
+            53
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-videohelpersuite",
+        "ver": "8e4d79471bf1952154768e8435a9300077b534fa",
+        "Node name for S&R": "VHS_LoadVideo"
+      },
+      "widgets_values": {
+        "video": "2025-08-10-222953_OG_00001.mp4",
+        "force_rate": 0,
+        "custom_width": 0,
+        "custom_height": 0,
+        "frame_load_cap": 0,
+        "skip_first_frames": 0,
+        "select_every_nth": 1,
+        "format": "AnimateDiff",
+        "choose video to upload": "image",
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "filename": "2025-08-10-222953_OG_00001.mp4",
+            "type": "input",
+            "format": "video/mp4",
+            "force_rate": 0,
+            "custom_width": 0,
+            "custom_height": 0,
+            "frame_load_cap": 0,
+            "skip_first_frames": 0,
+            "select_every_nth": 1
+          }
+        }
+      },
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 39,
+      "type": "VHS_VideoInfoSource",
+      "pos": [
+        858.3480224609375,
+        1634.27099609375
+      ],
+      "size": [
+        245.4794921875,
+        106
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video_info",
+          "type": "VHS_VIDEOINFO",
+          "link": 53
+        }
+      ],
+      "outputs": [
+        {
+          "name": "fps🟨",
+          "type": "FLOAT",
+          "links": [
+            69
+          ]
+        },
+        {
+          "name": "frame_count🟨",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "duration🟨",
+          "type": "FLOAT",
+          "links": null
+        },
+        {
+          "name": "width🟨",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "height🟨",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-videohelpersuite",
+        "ver": "8e4d79471bf1952154768e8435a9300077b534fa",
+        "Node name for S&R": "VHS_VideoInfoSource"
+      },
+      "widgets_values": {}
+    },
+    {
+      "id": 52,
+      "type": "TopazVideoAI",
+      "pos": [
+        837.8519897460938,
+        1186.0816650390625
+      ],
+      "size": [
+        396.1216735839844,
+        390
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 81
+        },
+        {
+          "name": "previous_upscale",
+          "shape": 7,
+          "type": "UPSCALE_PARAMS",
+          "link": null
+        },
+        {
+          "name": "input_fps",
+          "type": "INT",
+          "widget": {
+            "name": "input_fps"
+          },
+          "link": 86
+        },
+        {
+          "name": "upscale_factor",
+          "type": "FLOAT",
+          "widget": {
+            "name": "upscale_factor"
+          },
+          "link": 83
+        },
+        {
+          "name": "interpolation_multiplier",
+          "type": "FLOAT",
+          "widget": {
+            "name": "interpolation_multiplier"
+          },
+          "link": 84
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            85
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "xuanwoa/ComfyUI-TopazVideoAI",
+        "ver": "5baafea2639b79ef35306f01c9fd1ced91f1c6ec",
+        "Node name for S&R": "TopazVideoAI"
+      },
+      "widgets_values": [
+        24,
+        true,
+        2,
+        "amq-13",
+        0,
+        0,
+        true,
+        2,
+        "chr-2",
+        true,
+        "C:\\Program Files\\Topaz Labs LLC\\Topaz Video AI",
+        true,
+        false,
+        "TopazVideo"
+      ]
+    },
+    {
+      "id": 47,
+      "type": "easy convertAnything",
+      "pos": [
+        873.978271484375,
+        1685.8271484375
+      ],
+      "size": [
+        270,
+        58
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "*",
+          "type": "*",
+          "link": 69
+        }
+      ],
+      "outputs": [
+        {
+          "label": "int",
+          "name": "int",
+          "type": "INT",
+          "links": [
+            86,
+            87
+          ]
+        }
+      ],
+      "title": "原视频fps",
+      "properties": {
+        "cnr_id": "comfyui-easy-use",
+        "ver": "1.3.2",
+        "Node name for S&R": "easy convertAnything"
+      },
+      "widgets_values": [
+        "int"
+      ]
+    },
+    {
+      "id": 53,
+      "type": "MathExpression|pysssss",
+      "pos": [
+        887.2923583984375,
+        1730.3216552734375
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "a",
+          "shape": 7,
+          "type": "INT,FLOAT,IMAGE,LATENT",
+          "link": 87
+        },
+        {
+          "name": "b",
+          "shape": 7,
+          "type": "INT,FLOAT,IMAGE,LATENT",
+          "link": 88
+        },
+        {
+          "name": "c",
+          "shape": 7,
+          "type": "INT,FLOAT,IMAGE,LATENT",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": [
+            89
+          ]
+        }
+      ],
+      "title": "计算帧率",
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "1.2.5"
+      },
+      "widgets_values": [
+        "a*b"
+      ]
+    },
+    {
+      "id": 45,
+      "type": "PrimitiveFloat",
+      "pos": [
+        561.62744140625,
+        1074.46533203125
+      ],
+      "size": [
+        270,
+        58
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": [
+            84,
+            88
+          ]
+        }
+      ],
+      "title": "插帧倍率",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.48",
+        "Node name for S&R": "PrimitiveFloat"
+      },
+      "widgets_values": [
+        2
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 37,
+      "type": "PrimitiveFloat",
+      "pos": [
+        838.9928588867188,
+        1075.9549560546875
+      ],
+      "size": [
+        270,
+        58
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": [
+            83
+          ]
+        }
+      ],
+      "title": "放大倍率",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.48",
+        "Node name for S&R": "PrimitiveFloat"
+      },
+      "widgets_values": [
+        2
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 22,
+      "type": "VHS_VideoCombine",
+      "pos": [
+        1242.6068115234375,
+        991.837890625
+      ],
+      "size": [
+        603.0957641601562,
+        675.9913940429688
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 85
+        },
+        {
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "name": "meta_batch",
+          "shape": 7,
+          "type": "VHS_BatchManager",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": null
+        },
+        {
+          "name": "frame_rate",
+          "type": "FLOAT",
+          "widget": {
+            "name": "frame_rate"
+          },
+          "link": 89
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-videohelpersuite",
+        "ver": "8e4d79471bf1952154768e8435a9300077b534fa",
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": {
+        "frame_rate": 30,
+        "loop_count": 0,
+        "filename_prefix": "Footage/%date:yyyy-MM-dd%-%date:hhmmss%_topaz",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 19,
+        "save_metadata": true,
+        "trim_to_audio": false,
+        "pingpong": false,
+        "save_output": true,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "filename": "2025-08-11-024706_topaz_00001.mp4",
+            "subfolder": "Footage",
+            "type": "output",
+            "format": "video/h264-mp4",
+            "frame_rate": 32,
+            "workflow": "2025-08-11-024706_topaz_00001.png",
+            "fullpath": "C:\\Users\\xuanw\\Documents\\ComfyUI_windows_portable\\ComfyUI\\output\\Footage\\2025-08-11-024706_topaz_00001.mp4"
+          },
+          "muted": false
+        }
+      }
+    }
+  ],
+  "links": [
+    [
+      53,
+      23,
+      3,
+      39,
+      0,
+      "VHS_VIDEOINFO"
+    ],
+    [
+      69,
+      39,
+      0,
+      47,
+      0,
+      "*"
+    ],
+    [
+      81,
+      23,
+      0,
+      52,
+      0,
+      "IMAGE"
+    ],
+    [
+      83,
+      37,
+      0,
+      52,
+      3,
+      "FLOAT"
+    ],
+    [
+      84,
+      45,
+      0,
+      52,
+      4,
+      "FLOAT"
+    ],
+    [
+      85,
+      52,
+      0,
+      22,
+      0,
+      "IMAGE"
+    ],
+    [
+      86,
+      47,
+      0,
+      52,
+      2,
+      "INT"
+    ],
+    [
+      87,
+      47,
+      0,
+      53,
+      0,
+      "INT,FLOAT,IMAGE,LATENT"
+    ],
+    [
+      88,
+      45,
+      0,
+      53,
+      1,
+      "INT,FLOAT,IMAGE,LATENT"
+    ],
+    [
+      89,
+      53,
+      1,
+      22,
+      4,
+      "FLOAT"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.6934334949441548,
+      "offset": [
+        -187.388684509571,
+        -890.5560294162067
+      ]
+    },
+    "node_versions": {
+      "ComfyUI-TopazVideoAI": "41346d5ff1fa195173bb8bee837af850522a538c",
+      "ComfyUI-VideoHelperSuite": "cad87a17a3ff5e03c26cf55e4dc90397b5642503"
+    },
+    "ue_links": [],
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "groupNodes": {},
+    "frontendVersion": "1.23.4",
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}
