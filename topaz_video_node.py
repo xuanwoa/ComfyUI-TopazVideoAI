@@ -17,7 +17,7 @@ try:
 except ImportError:
     CUPY_AVAILABLE = False
     
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('TopazVideoAI')
 
 class TopazUpscaleParamsNode:
@@ -26,12 +26,12 @@ class TopazUpscaleParamsNode:
         
     @classmethod
     def INPUT_TYPES(cls):
-        upscale_models = ["aaa-9", "ahq-12", "alq-13", "alqs-2", "amq-13", "amqs-2", "ghq-5", "iris-2", "iris-3", "nyx-3", "prob-4", "thf-4", "thd-3", "thm-2", "rhea-1", "rxl-1"]
+        upscale_models = ["auto", "aaa-9", "ahq-12", "alq-13", "alqs-2", "amq-13", "amqs-2", "ghq-5", "iris-2", "iris-3", "nyx-3", "prob-4", "thf-4", "thd-3", "thm-2", "rhea-1", "rxl-1"]
         return {
             "required": {
                 "upscale_factor": ("FLOAT", {"default": 2.0, "min": 1.0, "max": 4.0, "step": 0.5}),
-                "upscale_model": (upscale_models, {"default": "iris-3"}),
-                "compression": ("FLOAT", {"default": 1.0, "min": -1.0, "max": 1.0, "step": 0.1}),
+                "upscale_model": (upscale_models, {"default": "auto"}),
+                "compression": ("FLOAT", {"default": 0.0, "min": -1.0, "max": 1.0, "step": 0.1}),
                 "blend": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.1}),
             },
             "optional": {
@@ -43,7 +43,7 @@ class TopazUpscaleParamsNode:
     FUNCTION = "get_params"
     CATEGORY = "video"
 
-    def get_params(self, upscale_factor=2.0, upscale_model="prap-2", compression=1.0, blend=0.0, previous_upscale=None):
+    def get_params(self, upscale_factor=2.0, upscale_model="auto", compression=0.0, blend=0.0, previous_upscale=None):
         if upscale_model == "thm-2" and upscale_factor != 1.0:
             upscale_factor = 1.0
             logger.warning("thm-2 forces upscale_factor=1.0")
@@ -66,25 +66,25 @@ class TopazVideoAINode:
         self.output_dir = os.path.join(self.base_temp_dir, "comfyui_topaz_temp")
         os.makedirs(self.output_dir, exist_ok=True)
         self.temp_files = []
-        logger.debug(f"Initialized temp directory at: {self.output_dir}")
         if not CUPY_AVAILABLE:
             logger.warning("CuPy not available. Some GPU operations will be disabled.")
 
     @classmethod
     def INPUT_TYPES(cls):
-        upscale_models = ["aaa-9", "ahq-12", "alq-13", "alqs-2", "amq-13", "amqs-2", "ghq-5", "iris-2", "iris-3", "nyx-3", "prob-4", "thf-4", "thd-3", "thm-2", "rhea-1", "rxl-1"]
+        upscale_models = ["auto", "aaa-9", "ahq-12", "alq-13", "alqs-2", "amq-13", "amqs-2", "ghq-5", "iris-2", "iris-3", "nyx-3", "prob-4", "thf-4", "thd-3", "thm-2", "rhea-1", "rxl-1"]
+        interpolation_models = ["auto", "apo-8", "apf-1", "chr-2", "chf-3"]
         return {
             "required": {
                 "images": ("IMAGE",),
+                "input_fps": ("INT", {"default": 24, "min": 1, "max": 240}),
                 "enable_upscale": ("BOOLEAN", {"default": False}),
                 "upscale_factor": ("FLOAT", {"default": 2.0, "min": 1.0, "max": 4.0, "step": 0.5}),
-                "upscale_model": (upscale_models, {"default": "thf-4"}),
-                "compression": ("FLOAT", {"default": 1.0, "min": -1.0, "max": 1.0, "step": 0.1}),
+                "upscale_model": (upscale_models, {"default": "auto"}),
+                "compression": ("FLOAT", {"default": 0.0, "min": -1.0, "max": 1.0, "step": 0.1}),
                 "blend": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.1}),
                 "enable_interpolation": ("BOOLEAN", {"default": False}),
-                "input_fps": ("INT", {"default": 24, "min": 1, "max": 240}),
                 "interpolation_multiplier": ("FLOAT", {"default": 2.0, "min": 1.0, "max": 8.0, "step": 0.5}),
-                "interpolation_model": (["apo-8", "apf-1", "chr-2", "chf-3", "chr-2"], {"default": "apo-8"}),
+                "interpolation_model": (interpolation_models, {"default": "auto"}),
                 "use_gpu": ("BOOLEAN", {"default": True}),
                 "topaz_ffmpeg_path": ("STRING", {"default": r"C:\Program Files\Topaz Labs LLC\Topaz Video AI"}),
                 "force_topaz_ffmpeg": ("BOOLEAN", {"default": True}),
@@ -103,219 +103,76 @@ class TopazVideoAINode:
     CATEGORY = "video"
 
     def _get_system_ffmpeg(self):
-        """Try to find system FFmpeg installation"""
-        try:
-            system_paths = os.environ.get("PATH", "").split(os.pathsep)
-            for path in system_paths:
-                topaz_ffmpeg_path = os.path.join(path, "ffmpeg.exe" if os.name == "nt" else "ffmpeg")
-                if os.path.isfile(topaz_ffmpeg_path) and os.access(topaz_ffmpeg_path, os.X_OK):
-                    logger.debug(f"Found system FFmpeg at: {topaz_ffmpeg_path}")
-                    return topaz_ffmpeg_path
-
-            if os.name == "nt":
-                common_locations = [
-                    os.path.expandvars(r"%ProgramFiles%\FFmpeg\bin\ffmpeg.exe"),
-                    os.path.expandvars(r"%ProgramFiles(x86)%\FFmpeg\bin\ffmpeg.exe"),
-                    os.path.expandvars(r"%USERPROFILE%\FFmpeg\bin\ffmpeg.exe")
-                ]
-                for location in common_locations:
-                    if os.path.isfile(location) and os.access(location, os.X_OK):
-                        logger.debug(f"Found system FFmpeg at: {location}")
-                        return location
-
-            result = subprocess.run(['ffmpeg', '-version'], 
-                                capture_output=True, 
-                                text=True, 
-                                env=os.environ.copy())  
-            if result.returncode == 0:
-                return 'ffmpeg'
-                
-        except Exception as e:
-            logger.debug(f"Error while searching for system FFmpeg: {e}")
-            
-        logger.debug("No system FFmpeg found")
         return None
 
     def _get_topaz_ffmpeg_path(self, ffmpeg_base_path, for_topaz=False, force_topaz=True):
-        """Get appropriate FFmpeg path based on context and force_topaz setting"""
-        # If force_topaz is True or this is a Topaz-specific operation, use Topaz FFmpeg
-        if force_topaz or for_topaz:
-            topaz_ffmpeg = os.path.join(ffmpeg_base_path, 'ffmpeg.exe')
-            if not os.path.exists(topaz_ffmpeg):
-                logger.warning(f"Topaz FFmpeg not found at {topaz_ffmpeg}")
-                if not force_topaz:
-                    logger.info("Falling back to system FFmpeg")
-                    system_ffmpeg = self._get_system_ffmpeg()
-                    if system_ffmpeg:
-                        return system_ffmpeg
-                raise FileNotFoundError(f"FFmpeg not found at {topaz_ffmpeg}")
-            return topaz_ffmpeg
-            
-        # Otherwise, try system FFmpeg first
-        system_ffmpeg = self._get_system_ffmpeg()
-        if system_ffmpeg:
-            return system_ffmpeg
-            
-        # Fallback to Topaz FFmpeg if system FFmpeg is not available
-        logger.warning("System FFmpeg not found, falling back to Topaz FFmpeg")
         return os.path.join(ffmpeg_base_path, 'ffmpeg.exe')
 
     def _save_batch(self, frames_batch, frame_dir, start_idx):
-        """Helper function to save a batch of frames"""
-        frame_paths = []
         for i, frame in enumerate(frames_batch):
             frame_path = os.path.join(frame_dir, f"frame_{start_idx + i:05d}.png")
-            img = Image.fromarray(frame)
-            img.save(frame_path)
-            frame_paths.append(frame_path)
-        return frame_paths
+            Image.fromarray(frame).save(frame_path)
 
     def _batch_to_video(self, image_batch, output_path, use_gpu, topaz_ffmpeg_path, force_topaz_ffmpeg, input_fps=24):
-        device = torch.device("cuda" if use_gpu and torch.cuda.is_available() else "cpu")
-        
-        if use_gpu and torch.cuda.is_available():
-            frames = image_batch.to(device)
-            frames = (frames * 255).byte()
-            frames = frames.cpu().numpy()
-        else:
-            frames = image_batch.cpu().numpy()
-            frames = (frames * 255).astype(np.uint8)
-        
+        frames = (image_batch.cpu().numpy() * 255).astype(np.uint8)
         frame_dir = os.path.join(self.output_dir, f"input_frames_{uuid.uuid4()}")
         os.makedirs(frame_dir, exist_ok=True)
-        logger.debug(f"Created frame directory: {frame_dir}")
         
         try:
-            batch_size = 32
-            frame_paths = []
-            
             with ThreadPoolExecutor() as executor:
-                futures = []
-                for i in range(0, len(frames), batch_size):
-                    batch = frames[i:i + batch_size]
-                    futures.append(
-                        executor.submit(self._save_batch, batch, frame_dir, i)
-                    )
-                
-                for future in futures:
-                    frame_paths.extend(future.result())
-            
-            logger.debug(f"Saved {len(frame_paths)} frames")
-            
-            if not frame_paths:
-                raise ValueError("No frames were saved")
+                for i in range(0, len(frames), 32):
+                    executor.submit(self._save_batch, frames[i:i+32], frame_dir, i)
             
             ffmpeg_exe = self._get_topaz_ffmpeg_path(topaz_ffmpeg_path, False, force_topaz_ffmpeg)
             cmd = [
-                ffmpeg_exe, "-y",
-                "-hide_banner",
-                "-nostdin",
-                "-strict", "2",
-                "-hwaccel", "auto",
+                ffmpeg_exe, "-y", "-hide_banner", "-nostdin", "-strict", "2",
+                "-hwaccel", "auto", "-framerate", str(input_fps),
                 "-i", os.path.join(frame_dir, "frame_%05d.png"),
             ]
             
             if use_gpu:
-                cmd.extend([
-                    "-c:v", "hevc_nvenc",
-                    "-profile", "main",
-                    "-preset", "medium",
-                    "-global_quality", "19",
-                    "-pix_fmt", "yuv420p",
-                    "-movflags", "frag_keyframe+empty_moov",
-                ])
+                cmd.extend(["-c:v", "hevc_nvenc", "-profile", "main", "-preset", "medium", "-global_quality", "19", "-pix_fmt", "yuv420p", "-movflags", "frag_keyframe+empty_moov"])
             else:
-                cmd.extend([
-                    "-c:v", "mpeg4",
-                    "-q:v", "2",
-                ])
-                
-            cmd.extend([
-                "-r", str(input_fps),
-                output_path
-            ])
+                cmd.extend(["-c:v", "mpeg4", "-q:v", "2"])
             
-            logger.debug(f"Running FFmpeg command: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            cmd.append(output_path)
             
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')
             if result.returncode != 0:
                 raise RuntimeError(f"FFmpeg error: {result.stderr}")
-            
-            if not os.path.exists(output_path):
-                raise FileNotFoundError(f"Output video not created: {output_path}")
-                
-            logger.debug(f"Video created successfully at: {output_path}")
-            
         finally:
             shutil.rmtree(frame_dir, ignore_errors=True)
 
     def _video_to_batch(self, video_path, use_gpu, topaz_ffmpeg_path, force_topaz_ffmpeg):
-        if not os.path.exists(video_path):
-            raise FileNotFoundError(f"Input video not found: {video_path}")
-        
         frame_dir = os.path.join(self.output_dir, f"output_frames_{uuid.uuid4()}")
         os.makedirs(frame_dir, exist_ok=True)
-        logger.debug(f"Created output frame directory: {frame_dir}")
         
         try:
             ffmpeg_exe = self._get_topaz_ffmpeg_path(topaz_ffmpeg_path, False, force_topaz_ffmpeg)
-            cmd = [
-                ffmpeg_exe, "-y",
-                "-i", video_path,
-                "-vsync", "0",
-                os.path.join(frame_dir, "frame_%05d.png")
-            ]
+            cmd = [ffmpeg_exe, "-y", "-i", video_path, "-vsync", "0", os.path.join(frame_dir, "frame_%05d.png")]
             
-            logger.debug(f"Running FFmpeg command: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')
             if result.returncode != 0:
                 raise RuntimeError(f"FFmpeg error: {result.stderr}")
             
             frame_files = sorted([f for f in os.listdir(frame_dir) if f.endswith('.png')])
-            logger.debug(f"Found {len(frame_files)} output frames")
-            
             if not frame_files:
                 raise ValueError(f"No frames extracted from video: {video_path}")
             
-            frames = []
-            
-            if use_gpu and CUPY_AVAILABLE:
-                logger.debug("Using CuPy for frame processing")
-                with cp.cuda.Device(0):
-                    for frame_file in frame_files:
-                        frame_path = os.path.join(frame_dir, frame_file)
-                        img_np = np.array(Image.open(frame_path))
-                        frame_gpu = cp.asarray(img_np)
-                        frames.append(cp.asnumpy(frame_gpu))
-            else:
-                logger.debug("Using CPU for frame processing")
-                for frame_file in frame_files:
-                    frame_path = os.path.join(frame_dir, frame_file)
-                    img = Image.open(frame_path)
-                    frame = np.array(img)
-                    frames.append(frame)
-            
-            frames_tensor = torch.from_numpy(np.stack(frames)).float() / 255.0
-            logger.debug(f"Created tensor with shape: {frames_tensor.shape}")
-            
-            return frames_tensor
-            
+            frames = [np.array(Image.open(os.path.join(frame_dir, f))) for f in frame_files]
+            return torch.from_numpy(np.stack(frames)).float() / 255.0
         finally:
             shutil.rmtree(frame_dir, ignore_errors=True)
 
-    def process_video(self, images, enable_upscale, upscale_factor, upscale_model, compression, blend,
-                     enable_interpolation, input_fps, interpolation_multiplier, interpolation_model, use_gpu, topaz_ffmpeg_path, 
-                     force_topaz_ffmpeg, save_video=False, filename_prefix="TopazVideo", previous_upscale=None):
-        if upscale_model == "thm-2" and upscale_factor != 1.0:
-            upscale_factor = 1.0
-            logger.warning("thm-2 forces upscale_factor=1.0")
-            
+    def process_video(self, images, input_fps, enable_upscale, upscale_factor, upscale_model, compression, blend,
+                      enable_interpolation, interpolation_multiplier, interpolation_model, use_gpu, topaz_ffmpeg_path, 
+                      force_topaz_ffmpeg, save_video=False, filename_prefix="TopazVideo", previous_upscale=None):
+        
         operation_id = str(uuid.uuid4())
         input_video = os.path.join(self.output_dir, f"{operation_id}_input.mp4")
         intermediate_video = os.path.join(self.output_dir, f"{operation_id}_intermediate.mp4")
-        output_video = os.path.join(self.output_dir, f"{operation_id}_output.mp4")
-        self.temp_files.extend([input_video, intermediate_video, output_video])
+        final_video_path = os.path.join(self.output_dir, f"{operation_id}_output.mp4")
+        self.temp_files.extend([input_video, intermediate_video, final_video_path])
         
         try:
             logger.info(f"Converting image batch to video with input fps {input_fps}...")
@@ -323,165 +180,98 @@ class TopazVideoAINode:
             
             current_input = input_video
             current_output = intermediate_video
+            final_fps = input_fps
 
-            # Modify the upscale logic to always apply filters when enable_upscale is True
             if enable_upscale:
-                all_upscale_params = []
-                if previous_upscale:
-                    all_upscale_params.extend(previous_upscale)
-                
-                # Always add current params when enable_upscale is True
+                all_upscale_params = previous_upscale if previous_upscale else []
                 all_upscale_params.append({
-                    "upscale_factor": upscale_factor,
-                    "upscale_model": upscale_model,
-                    "compression": compression,
-                    "blend": blend
+                    "upscale_factor": upscale_factor, "upscale_model": upscale_model,
+                    "compression": compression, "blend": blend
                 })
                 
-                upscale_filters = []
-                for params in all_upscale_params:
-                    upscale_filters.append(
-                        f"tvai_up=model={params['upscale_model']}"
-                        f":scale={params['upscale_factor']}"
-                        f":estimate=8"
-                        f":compression={params['compression']}"
-                        f":blend={params['blend']}"
-                    )
-                
+                upscale_filters = [
+                    f"tvai_up=model={p['upscale_model']}:scale={p['upscale_factor']}:estimate=8:compression={p['compression']}:blend={p['blend']}"
+                    for p in all_upscale_params
+                ]
                 filter_chain = ','.join(upscale_filters)
                 logger.info(f"Applying upscale filter chain: {filter_chain}")
+
                 ffmpeg_exe = self._get_topaz_ffmpeg_path(topaz_ffmpeg_path, True, force_topaz_ffmpeg)
                 cmd = [
-                    ffmpeg_exe, "-y",
-                    "-hide_banner",
-                    "-nostdin",
-                    "-strict", "2",
-                    "-hwaccel", "auto",
-                    "-i", current_input,
-                    "-vf", filter_chain,
+                    ffmpeg_exe, "-y", "-hide_banner", "-nostdin", "-strict", "2",
+                    "-hwaccel", "auto", "-i", current_input, "-vf", filter_chain,
                 ]
                 
                 if use_gpu:
-                    cmd.extend([
-                        "-c:v", "hevc_nvenc",
-                        "-profile", "main",
-                        "-preset", "medium",
-                        "-global_quality", "19",
-                        "-pix_fmt", "yuv420p",
-                        "-movflags", "frag_keyframe+empty_moov",
-                    ])
+                    cmd.extend(["-c:v", "hevc_nvenc", "-profile", "main", "-preset", "medium", "-global_quality", "19", "-pix_fmt", "yuv420p", "-movflags", "frag_keyframe+empty_moov"])
                 else:
-                    cmd.extend([
-                        "-c:v", "mpeg4",
-                        "-q:v", "2",
-                    ])
-                    
-                cmd.extend([
-                    "-r", str(input_fps),
-                    current_output
-                ])
+                    cmd.extend(["-c:v", "mpeg4", "-q:v", "2"])
                 
-                logger.debug(f"Running FFmpeg upscale command: {' '.join(cmd)}")
-                result = subprocess.run(cmd, capture_output=True, text=True)
+                cmd.append(current_output) # NO -r parameter here to preserve duration
                 
+                result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')
                 if result.returncode != 0:
                     raise RuntimeError(f"FFmpeg upscale error: {result.stderr}")
                 
                 current_input = current_output
-                current_output = output_video
+                current_output = final_video_path
             
             if enable_interpolation:
                 target_fps = int(input_fps * interpolation_multiplier)
-                logger.info(f"Applying interpolation with input fps {input_fps} and multiplier {interpolation_multiplier} (target fps: {target_fps})")
-                if target_fps <= 0:
-                    raise ValueError("Target FPS must be greater than 0")
+                final_fps = target_fps
+                logger.info(f"Applying interpolation: target fps: {target_fps}")
                 
                 interpolation_filter = f"tvai_fi=model={interpolation_model}:fps={target_fps}"
                 
                 ffmpeg_exe = self._get_topaz_ffmpeg_path(topaz_ffmpeg_path, True, force_topaz_ffmpeg)
                 cmd = [
-                    ffmpeg_exe, "-y",
-                    "-hide_banner",
-                    "-nostdin",
-                    "-strict", "2",
-                    "-hwaccel", "auto",
-                    "-i", current_input,
-                    "-vf", interpolation_filter,
+                    ffmpeg_exe, "-y", "-hide_banner", "-nostdin", "-strict", "2",
+                    "-hwaccel", "auto", "-i", current_input, "-vf", interpolation_filter,
                 ]
                 
                 if use_gpu:
-                    cmd.extend([
-                        "-c:v", "hevc_nvenc",
-                        "-profile", "main",
-                        "-preset", "medium",
-                        "-global_quality", "19",
-                        "-pix_fmt", "yuv420p",
-                        "-movflags", "frag_keyframe+empty_moov",
-                    ])
+                    cmd.extend(["-c:v", "hevc_nvenc", "-profile", "main", "-preset", "medium", "-global_quality", "19", "-pix_fmt", "yuv420p", "-movflags", "frag_keyframe+empty_moov"])
                 else:
-                    cmd.extend([
-                        "-c:v", "mpeg4",
-                        "-q:v", "2",
-                    ])
-                    
-                cmd.extend([
-                    current_output
-                ])
+                    cmd.extend(["-c:v", "mpeg4", "-q:v", "2"])
                 
-                logger.debug(f"Running FFmpeg interpolation command: {' '.join(cmd)}")
-                result = subprocess.run(cmd, capture_output=True, text=True)
+                cmd.extend(["-r", str(target_fps), current_output]) # ADD -r parameter here
                 
+                result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')
                 if result.returncode != 0:
                     raise RuntimeError(f"FFmpeg interpolation error: {result.stderr}")
             else:
-                if current_input != output_video:
+                if current_input != current_output:
                     shutil.copy2(current_input, current_output)
-            
-            # Save video if requested
+
+            final_processed_video = current_output
+
             if save_video:
                 output_dir = folder_paths.get_output_directory()
                 full_output_folder, filename, _, subfolder, _ = folder_paths.get_save_image_path(filename_prefix, output_dir)
                 
-                # Find the next available counter
                 max_counter = 0
                 matcher = re.compile(f"{re.escape(filename)}_(\\d+)\\D*\\..+", re.IGNORECASE)
-                for existing_file in os.listdir(full_output_folder):
-                    match = matcher.fullmatch(existing_file)
+                for f in os.listdir(full_output_folder):
+                    match = matcher.fullmatch(f)
                     if match:
-                        file_counter = int(match.group(1))
-                        if file_counter > max_counter:
-                            max_counter = file_counter
+                        max_counter = max(max_counter, int(match.group(1)))
                 
                 counter = max_counter + 1
                 output_file = f"{filename}_{counter:05}.mp4"
                 output_path = os.path.join(full_output_folder, output_file)
                 
-                # Copy the final video to the output directory
-                shutil.copy2(current_output, output_path)
+                shutil.copy2(final_processed_video, output_path)
                 logger.info(f"Saved video to: {output_path}")
                 
-                # Return UI information for the saved video
-                previews = [{
-                    "filename": output_file,
-                    "subfolder": subfolder,
-                    "type": "output",
-                    "format": "video/mp4",
-                    "frame_rate": input_fps,
-                }]
+                previews = [{"filename": output_file, "subfolder": subfolder, "type": "output", "format": "video/mp4"}]
                 
-                # Check if there are any connected output nodes
-                if not hasattr(self, '_connected_outputs') or not self._connected_outputs:
-                    # If no connected outputs, just return the UI info
-                    return {"ui": {"gifs": previews}, "result": (images,)}
+                if hasattr(self, '_connected_outputs') and self._connected_outputs:
+                    output_frames = self._video_to_batch(final_processed_video, use_gpu, topaz_ffmpeg_path, force_topaz_ffmpeg)
+                    return {"ui": {"previews": previews}, "result": (output_frames,)}
                 else:
-                    # If there are connected outputs, convert back to image sequence
-                    logger.info("Converting final video back to image batch...")
-                    output_frames = self._video_to_batch(current_output, use_gpu, topaz_ffmpeg_path, force_topaz_ffmpeg)
-                    return {"ui": {"gifs": previews}, "result": (output_frames,)}
+                    return {"ui": {"previews": previews}, "result": (images,)}
             else:
-                # If save_video is False, we must convert back to image sequence
-                logger.info("Converting final video back to image batch...")
-                output_frames = self._video_to_batch(current_output, use_gpu, topaz_ffmpeg_path, force_topaz_ffmpeg)
+                output_frames = self._video_to_batch(final_processed_video, use_gpu, topaz_ffmpeg_path, force_topaz_ffmpeg)
                 return (output_frames,)
             
         except Exception as e:
